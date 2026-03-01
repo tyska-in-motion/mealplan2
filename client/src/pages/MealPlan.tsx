@@ -914,6 +914,7 @@ export default function MealPlan() {
 }
 
 function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onDeleteMeal, onToggleEaten, onUpdateEntry, onViewRecipe, onViewPlannedRecipe }: any) {
+  const [servingInputs, setServingInputs] = useState<Record<number, string>>({});
   const dateStr = format(day, "yyyy-MM-dd");
   const { data: dayPlan, isLoading } = useDayPlan(dateStr);
   const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
@@ -970,6 +971,29 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
     A: calculateSummary(personEntries.A),
     B: calculateSummary(personEntries.B),
   }), [personEntries]);
+
+  const applyServingInput = (entry: any) => {
+    const rawValue = servingInputs[entry.id];
+    if (rawValue === undefined) return;
+
+    const parsed = Number(rawValue.replace(",", "."));
+    if (!parsed || parsed <= 0) {
+      setServingInputs((prev) => {
+        const next = { ...prev };
+        delete next[entry.id];
+        return next;
+      });
+      return;
+    }
+
+    const rounded = Math.round(parsed * 100) / 100;
+    onUpdateEntry(entry.id, { servings: rounded });
+    setServingInputs((prev) => {
+      const next = { ...prev };
+      delete next[entry.id];
+      return next;
+    });
+  };
 
   return (
     <div className={cn("space-y-6", isToday && "bg-primary/5 -mx-4 px-4 py-8 rounded-3xl border border-primary/10")}>
@@ -1090,7 +1114,27 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
                                     <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => onUpdateEntry(entry.id, { servings: Math.max(0.5, (Number(entry.servings) || 1) - 0.5) })}>
                                       <Minus className="h-3 w-3" />
                                     </Button>
-                                    <span className="text-[10px] font-medium text-center">{entry.recipe ? (<>{Number(entry.servings) || 1}/{Number(entry.recipe.servings) || 1}</>) : (Number(entry.servings) || 1)}</span>
+                                    <div className="flex items-center gap-1">
+                                      <Input
+                                        type="number"
+                                        inputMode="decimal"
+                                        min={0.5}
+                                        step={0.5}
+                                        className="h-5 w-[56px] text-[10px] font-medium px-1 py-0 text-center"
+                                        value={servingInputs[entry.id] ?? String(Number(entry.servings) || 1)}
+                                        onChange={(e) => setServingInputs((prev) => ({ ...prev, [entry.id]: e.target.value }))}
+                                        onBlur={() => applyServingInput(entry)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.currentTarget.blur();
+                                          }
+                                        }}
+                                        aria-label="Liczba porcji"
+                                      />
+                                      {entry.recipe && (
+                                        <span className="text-[10px] font-medium">/ {Number(entry.recipe.servings) || 1}</span>
+                                      )}
+                                    </div>
                                     <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => onUpdateEntry(entry.id, { servings: (Number(entry.servings) || 1) + 0.5 })}>
                                       <Plus className="h-3 w-3" />
                                     </Button>
