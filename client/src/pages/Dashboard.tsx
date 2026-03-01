@@ -43,8 +43,8 @@ export default function Dashboard() {
   const [quickCustomCarbs, setQuickCustomCarbs] = useState<number>(45);
   const [quickCustomFat, setQuickCustomFat] = useState<number>(15);
   const [targetsByPerson, setTargetsByPerson] = useState<Record<"A" | "B", PersonTargets>>({
-    A: { calories: 2000, protein: 150, carbs: 200, fat: 65 },
-    B: { calories: 2000, protein: 150, carbs: 200, fat: 65 },
+    A: { calories: 1850, protein: 120, carbs: 205, fat: 61 },
+    B: { calories: 2700, protein: 170, carbs: 302, fat: 90 },
   });
 
   const [isEditingIngredients, setIsEditingIngredients] = useState(false);
