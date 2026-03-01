@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Clock, ChefHat, CalendarPlus, Settings2 } from "lucide-react";
+import { calculateScaledAmount } from "@shared/scaling";
 
 interface RecipeViewProps {
   recipe: any;
@@ -38,8 +39,6 @@ export function RecipeView({
 
   const factor = servingsToUse / recipeServings;
   const frequentAddonSet = new Set((frequentAddonIds || []).map((id) => Number(id)));
-  const macrosFactor = isPlannedView ? factor : (1 / recipeServings);
-  const ingredientsFactor = isPlannedView ? factor : 1;
 
   const baseCaloriesPerServing = Math.round((recipe.ingredients || []).reduce((sum: number, ri: any) =>
     sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
@@ -87,34 +86,42 @@ export function RecipeView({
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground">Kalorie</p>
               <p className="text-xl font-bold text-primary">
-                {Math.round((baseIngredients.reduce((sum: number, ri: any) => 
-                  sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0)) * macrosFactor
-                )}
+                {Math.round(baseIngredients.reduce((sum: number, ri: any) => {
+                  if (!ri.ingredient) return sum;
+                  const amount = calculateScaledAmount(ri, servingsToUse, recipeServings);
+                  return sum + (ri.ingredient.calories * amount / 100);
+                }, 0))}
               </p>
               <p className="text-[8px] text-muted-foreground">{isPlannedView ? "łącznie" : "na porcję"}</p>
             </div>
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground">Białko</p>
               <p className="text-xl font-bold">
-                {Math.round((baseIngredients.reduce((sum: number, ri: any) => 
-                  sum + (ri.ingredient ? (ri.ingredient.protein * ri.amount / 100) : 0), 0)) * macrosFactor
-                )}g
+                {Math.round(baseIngredients.reduce((sum: number, ri: any) => {
+                  if (!ri.ingredient) return sum;
+                  const amount = calculateScaledAmount(ri, servingsToUse, recipeServings);
+                  return sum + (ri.ingredient.protein * amount / 100);
+                }, 0))}g
               </p>
             </div>
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground">Węgle</p>
               <p className="text-xl font-bold">
-                {Math.round((baseIngredients.reduce((sum: number, ri: any) => 
-                  sum + (ri.ingredient ? (ri.ingredient.carbs * ri.amount / 100) : 0), 0)) * macrosFactor
-                )}g
+                {Math.round(baseIngredients.reduce((sum: number, ri: any) => {
+                  if (!ri.ingredient) return sum;
+                  const amount = calculateScaledAmount(ri, servingsToUse, recipeServings);
+                  return sum + (ri.ingredient.carbs * amount / 100);
+                }, 0))}g
               </p>
             </div>
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground">Tłuszcz</p>
               <p className="text-xl font-bold">
-                {Math.round((baseIngredients.reduce((sum: number, ri: any) => 
-                  sum + (ri.ingredient ? (ri.ingredient.fat * ri.amount / 100) : 0), 0)) * macrosFactor
-                )}g
+                {Math.round(baseIngredients.reduce((sum: number, ri: any) => {
+                  if (!ri.ingredient) return sum;
+                  const amount = calculateScaledAmount(ri, servingsToUse, recipeServings);
+                  return sum + (ri.ingredient.fat * amount / 100);
+                }, 0))}g
               </p>
             </div>
           </div>
@@ -149,7 +156,7 @@ export function RecipeView({
                         )}
                       </span>
                       <span className="font-medium">
-                        {Math.round(ri.amount * ingredientsFactor)}g
+                        {Math.round(calculateScaledAmount(ri, servingsToUse, recipeServings))}{ri.unit || "g"}
                       </span>
                     </div>
                     {Number(ri.ingredient?.unitWeight || 0) > 0 && (

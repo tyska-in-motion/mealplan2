@@ -32,8 +32,8 @@ export interface IStorage {
   // Recipes
   getRecipes(search?: string, ingredientId?: number): Promise<RecipeWithIngredients[]>;
   getRecipe(id: number): Promise<RecipeWithIngredients | undefined>;
-  createRecipe(recipe: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients>;
-  updateRecipe(id: number, recipe: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients>;
+  createRecipe(recipe: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients>;
+  updateRecipe(id: number, recipe: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients>;
   deleteRecipe(id: number): Promise<void>;
 
   // Meal Plan
@@ -161,7 +161,7 @@ export class DatabaseStorage implements IStorage {
     return recipe as RecipeWithIngredients | undefined;
   }
 
-  async createRecipe(req: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients> {
+  async createRecipe(req: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients> {
     const [recipe] = await db.insert(recipes).values({
       name: req.name,
       tags: req.tags,
@@ -177,7 +177,12 @@ export class DatabaseStorage implements IStorage {
         req.ingredients.map(i => ({
           recipeId: recipe.id,
           ingredientId: i.ingredientId,
-          amount: i.amount
+          amount: Math.round(i.amount),
+          baseAmount: i.baseAmount ?? i.amount,
+          unit: i.unit || "g",
+          scalingType: i.scalingType || "LINEAR",
+          scalingFormula: i.scalingFormula,
+          stepThresholds: i.stepThresholds,
         }))
       );
     }
@@ -195,7 +200,7 @@ export class DatabaseStorage implements IStorage {
     return this.getRecipe(recipe.id) as Promise<RecipeWithIngredients>;
   }
 
-  async updateRecipe(id: number, req: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients> {
+  async updateRecipe(id: number, req: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients> {
     await db.update(recipes)
       .set({
         name: req.name,
@@ -216,7 +221,12 @@ export class DatabaseStorage implements IStorage {
         req.ingredients.map(i => ({
           recipeId: id,
           ingredientId: i.ingredientId,
-          amount: i.amount
+          amount: Math.round(i.amount),
+          baseAmount: i.baseAmount ?? i.amount,
+          unit: i.unit || "g",
+          scalingType: i.scalingType || "LINEAR",
+          scalingFormula: i.scalingFormula,
+          stepThresholds: i.stepThresholds,
         }))
       );
     }
@@ -309,7 +319,7 @@ export class DatabaseStorage implements IStorage {
           recipe.ingredients.map(ri => ({
             mealEntryId: newEntry.id,
             ingredientId: ri.ingredientId,
-            amount: ri.amount // Note: this is for the whole recipe, we adjust by servings in calculation
+            amount: Math.round(Number(ri.baseAmount ?? ri.amount) || 0) // immutable base snapshot
           }))
         );
       }
