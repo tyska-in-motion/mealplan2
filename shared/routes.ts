@@ -23,6 +23,22 @@ export const errorSchemas = {
   }),
 };
 
+const stepThresholdSchema = z.object({
+  minServings: z.number().min(0),
+  maxServings: z.number().min(0).nullable().optional(),
+  amount: z.number().min(0),
+});
+
+const recipeIngredientInputSchema = z.object({
+  ingredientId: z.number(),
+  amount: z.number(),
+  baseAmount: z.number().optional(),
+  unit: z.string().optional(),
+  scalingType: z.enum(["LINEAR", "FIXED", "STEP", "FORMULA"]).optional().default("LINEAR"),
+  scalingFormula: z.string().optional(),
+  stepThresholds: z.array(stepThresholdSchema).optional(),
+});
+
 export const api = {
   ingredients: {
     list: {
@@ -88,10 +104,7 @@ export const api = {
       path: '/api/recipes',
       input: insertRecipeSchema.extend({
         servings: z.number().min(0.1).default(1),
-        ingredients: z.array(z.object({
-          ingredientId: z.number(),
-          amount: z.number(),
-        })),
+        ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),
           amount: z.number(),
@@ -123,10 +136,7 @@ export const api = {
       path: '/api/recipes/:id',
       input: insertRecipeSchema.extend({
         servings: z.number().min(0.1).optional(),
-        ingredients: z.array(z.object({
-          ingredientId: z.number(),
-          amount: z.number(),
-        })),
+        ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),
           amount: z.number(),

@@ -4,9 +4,43 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { insertRecipeSchema, insertMealEntrySchema, insertIngredientSchema } from "@shared/schema";
+import { calculateScaledAmount } from "@shared/scaling";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+
+
+const stepThresholdSchema = z.object({
+  minServings: z.number().min(0),
+  maxServings: z.number().min(0).nullable().optional(),
+  amount: z.number().min(0),
+});
+
+const recipeIngredientInputSchema = z.object({
+  ingredientId: z.number(),
+  amount: z.number().min(0),
+  baseAmount: z.number().min(0).optional(),
+  unit: z.string().min(1).optional(),
+  scalingType: z.enum(["LINEAR", "FIXED", "STEP", "FORMULA"]).default("LINEAR"),
+  scalingFormula: z.string().optional(),
+  stepThresholds: z.array(stepThresholdSchema).optional(),
+});
+
+
+function resolveIngredientForScaling(entry: any, ingredientRow: any) {
+  const recipeIngredient = (entry?.recipe?.ingredients || []).find(
+    (ri: any) => Number(ri.ingredientId) === Number(ingredientRow.ingredientId),
+  );
+
+  return {
+    ...recipeIngredient,
+    ...ingredientRow,
+    baseAmount: Number(ingredientRow?.baseAmount ?? ingredientRow?.amount ?? recipeIngredient?.baseAmount ?? recipeIngredient?.amount ?? 0),
+    scalingType: ingredientRow?.scalingType ?? recipeIngredient?.scalingType ?? "LINEAR",
+    scalingFormula: ingredientRow?.scalingFormula ?? recipeIngredient?.scalingFormula,
+    stepThresholds: ingredientRow?.stepThresholds ?? recipeIngredient?.stepThresholds,
+  };
+}
 
 // Extend Request type for multer
 interface MulterRequest extends Request {
@@ -117,7 +151,8 @@ export async function registerRoutes(
 
       r.ingredients.forEach(ri => {
         if (!ri.ingredient) return;
-        const multiplier = ri.amount / 100 / (r.servings || 1);
+        const scaledAmount = calculateScaledAmount(ri as any, Number(r.servings) || 1, Number(r.servings) || 1);
+        const multiplier = scaledAmount / 100 / (r.servings || 1);
         stats.calories += ri.ingredient.calories * multiplier;
         stats.protein += ri.ingredient.protein * multiplier;
         stats.carbs += ri.ingredient.carbs * multiplier;
@@ -126,6 +161,10 @@ export async function registerRoutes(
 
       return {
         ...r,
+        ingredients: r.ingredients.map((ri) => ({
+          ...ri,
+          calculatedAmount: calculateScaledAmount(ri as any, Number(r.servings) || 1, Number(r.servings) || 1),
+        })),
         stats: {
           calories: Math.round(stats.calories),
           protein: Math.round(stats.protein),
@@ -151,7 +190,15 @@ export async function registerRoutes(
   app.get(api.recipes.get.path, async (req, res) => {
     const item = await storage.getRecipe(Number(req.params.id));
     if (!item) return res.status(404).json({ message: "Not found" });
-    res.json(item);
+    const baseServings = Number(item.servings) || 1;
+    const recipeWithCalculated = {
+      ...item,
+      ingredients: item.ingredients.map((ri) => ({
+        ...ri,
+        calculatedAmount: calculateScaledAmount(ri as any, baseServings, baseServings),
+      })),
+    };
+    res.json(recipeWithCalculated);
   });
 
   app.post(api.recipes.create.path, async (req, res) => {
@@ -165,10 +212,7 @@ export async function registerRoutes(
         prepTime: z.number().optional(),
         imageUrl: z.string().optional(),
         servings: z.number().min(0.1).default(1),
-        ingredients: z.array(z.object({
-          ingredientId: z.number(),
-          amount: z.number()
-        })),
+        ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),
           amount: z.number(),
@@ -196,10 +240,7 @@ export async function registerRoutes(
         prepTime: z.number().optional(),
         imageUrl: z.string().optional(),
         servings: z.number().min(0.1).optional(),
-        ingredients: z.array(z.object({
-          ingredientId: z.number(),
-          amount: z.number()
-        })),
+        ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),
           amount: z.number(),
@@ -241,12 +282,12 @@ export async function registerRoutes(
 
       const entryServings = Number(entry.servings) || 1;
       const recipeServings = Number(entry.recipe?.servings || 1);
-      const factor = entryServings / recipeServings;
 
       if (ingredientsToUse.length > 0) {
         ingredientsToUse.forEach(ri => {
           if (!ri.ingredient) return;
-          const multiplier = (ri.amount / 100) * factor;
+          const scaledAmount = calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings);
+          const multiplier = scaledAmount / 100;
           totalCalories += (ri.ingredient.calories * multiplier);
           totalProtein += (ri.ingredient.protein * multiplier);
           totalCarbs += (ri.ingredient.carbs * multiplier);
@@ -261,6 +302,27 @@ export async function registerRoutes(
       }
     });
 
+    const entriesWithCalculated = entries.map((entry) => {
+      const entryServings = Number(entry.servings) || 1;
+      const recipeServings = Number(entry.recipe?.servings || 1);
+      return {
+        ...entry,
+        ingredients: (entry.ingredients || []).map((ri: any) => ({
+          ...ri,
+          calculatedAmount: calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings),
+        })),
+        recipe: entry.recipe
+          ? {
+              ...entry.recipe,
+              ingredients: (entry.recipe.ingredients || []).map((ri: any) => ({
+                ...ri,
+                calculatedAmount: calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings),
+              })),
+            }
+          : entry.recipe,
+      };
+    });
+
     res.json({
       date,
       totalCalories: Math.round(totalCalories),
@@ -268,7 +330,7 @@ export async function registerRoutes(
       totalCarbs: Math.round(totalCarbs),
       totalFat: Math.round(totalFat),
       totalPrice: Math.round(totalPrice * 100) / 100,
-      entries
+      entries: entriesWithCalculated
     });
   });
 
@@ -380,11 +442,9 @@ export async function registerRoutes(
       ingredientsToUse.forEach(ri => {
         if (!ri.ingredient) return;
         const existing = shoppingMap.get(ri.ingredientId);
-        // Account for servings in the entry (recipe ingredients are for the whole recipe)
         const entryServings = Number(entry.servings) || 1;
         const recipeServings = Number(entry.recipe?.servings || 1);
-        const factor = entryServings / recipeServings;
-        const amount = Number(ri.amount) * factor;
+        const amount = calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings);
         if (existing) {
           existing.amount += amount;
         } else {
