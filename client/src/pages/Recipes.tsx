@@ -78,6 +78,10 @@ export default function Recipes() {
 
   const allTags = Array.from(new Set(recipes?.flatMap(r => r.tags || []) || [])) as string[];
 
+  function getIngredientAmount(ri: any) {
+    return Number(ri?.baseAmount ?? ri?.amount ?? 0);
+  }
+
   const sortedAndFilteredRecipes = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
@@ -260,7 +264,6 @@ export default function Recipes() {
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [viewingRecipe, setViewingRecipe] = useState<any>(null);
 
-  const getIngredientAmount = (ri: any) => Number(ri?.baseAmount ?? ri?.amount ?? 0);
 
   const getRecipeCaloriesPerServing = (recipe: any) => {
     const servings = Number(recipe?.servings) || 1;
