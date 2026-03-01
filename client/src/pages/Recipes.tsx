@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { useRecipes, useCreateRecipe, useUpdateRecipe, useDeleteRecipe } from "@/hooks/use-recipes";
 import { useIngredients } from "@/hooks/use-ingredients";
@@ -58,16 +58,8 @@ import { RecipeView } from "@/components/RecipeView";
 export default function Recipes() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [search]);
 
-  const { data: recipes, isLoading } = useRecipes(debouncedSearch);
+  const { data: recipes, isLoading } = useRecipes();
   const { mutate: deleteRecipe } = useDeleteRecipe();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
@@ -76,10 +68,28 @@ export default function Recipes() {
 
   const allTags = Array.from(new Set(recipes?.flatMap(r => r.tags || []) || [])) as string[];
 
-  const sortedAndFilteredRecipes = recipes?.filter(recipe => {
-    if (selectedTag === "all") return true;
-    return recipe.tags?.includes(selectedTag);
-  }).sort((a, b) => {
+  const sortedAndFilteredRecipes = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return (recipes || [])
+      .filter((recipe) => {
+        const matchesTag = selectedTag === "all" || recipe.tags?.includes(selectedTag);
+        if (!matchesTag) return false;
+
+        if (!normalizedSearch) return true;
+
+        const matchesName = recipe.name?.toLowerCase().includes(normalizedSearch);
+        const matchesTags = (recipe.tags || []).some((tag: string) => tag.toLowerCase().includes(normalizedSearch));
+        const matchesIngredients = (recipe.ingredients || []).some((ri: any) =>
+          ri.ingredient?.name?.toLowerCase().includes(normalizedSearch)
+        );
+        const matchesAddons = (recipe.frequentAddons || []).some((ri: any) =>
+          ri.ingredient?.name?.toLowerCase().includes(normalizedSearch)
+        );
+
+        return matchesName || matchesTags || matchesIngredients || matchesAddons;
+      })
+      .sort((a, b) => {
     switch (sortBy) {
       case "frequency":
         return (b.stats?.eatCount || 0) - (a.stats?.eatCount || 0);
@@ -106,6 +116,7 @@ export default function Recipes() {
         return 0;
     }
   });
+  }, [recipes, search, selectedTag, sortBy]);
 
   // New state for "Add to Meal Plan"
   const [isAddToPlanOpen, setIsAddToPlanOpen] = useState(false);
@@ -439,7 +450,7 @@ export default function Recipes() {
                             </PopoverTrigger>
                             <PopoverContent className="w-[300px] p-0 bg-white border border-border shadow-md" align="start">
                               <Command>
-                                <CommandInput placeholder="Szukaj składnika..." />
+                                <CommandInput placeholder="Szukaj składnika..." onKeyDown={(event) => event.stopPropagation()} />
                                 <CommandList>
                                   <CommandEmpty>Nie znaleziono składnika.</CommandEmpty>
                                   <CommandGroup>
@@ -515,7 +526,7 @@ export default function Recipes() {
                             </PopoverTrigger>
                             <PopoverContent className="w-[300px] p-0 bg-white border border-border shadow-md" align="start">
                               <Command>
-                                <CommandInput placeholder="Szukaj składnika..." />
+                                <CommandInput placeholder="Szukaj składnika..." onKeyDown={(event) => event.stopPropagation()} />
                                 <CommandList>
                                   <CommandEmpty>Nie znaleziono składnika.</CommandEmpty>
                                   <CommandGroup>

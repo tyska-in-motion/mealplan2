@@ -184,6 +184,38 @@ export default function Summary() {
       };
     });
 
+    const eatenEntries = days.flatMap((day) => (day.entries || []).filter((entry: any) => entry.isEaten));
+
+    const getEatenCaloriesForPerson = (person: "A" | "B") => eatenEntries.reduce((sum: number, entry: any) => {
+      if ((entry.person || "A") !== person) return sum;
+
+      if (!entry.recipe) {
+        const servings = Number(entry.servings) || 1;
+        return sum + (Number(entry.customCalories) || 0) * servings;
+      }
+
+      const recipeServings = Number(entry.recipe?.servings) || 1;
+      const entryServings = Number(entry.servings) || 1;
+      const factor = entryServings / recipeServings;
+      const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
+
+      const kcal = ingredientsToUse.reduce((kcalSum: number, ri: any) => {
+        if (!ri.ingredient) return kcalSum;
+        return kcalSum + ((Number(ri.ingredient.calories) || 0) * (Number(ri.amount) || 0) / 100);
+      }, 0);
+
+      return sum + kcal * factor;
+    }, 0);
+
+    const perPersonAvgEatenCalories = {
+      A: eatenEntries.filter((entry: any) => (entry.person || "A") === "A").length
+        ? Math.round(getEatenCaloriesForPerson("A") / eatenEntries.filter((entry: any) => (entry.person || "A") === "A").length)
+        : 0,
+      B: eatenEntries.filter((entry: any) => (entry.person || "A") === "B").length
+        ? Math.round(getEatenCaloriesForPerson("B") / eatenEntries.filter((entry: any) => (entry.person || "A") === "B").length)
+        : 0,
+    };
+
     return {
       days,
       totalCost,
@@ -192,6 +224,7 @@ export default function Summary() {
       mostUsedIngredients,
       mostCookedRecipes,
       dailyHistory,
+      perPersonAvgEatenCalories,
     };
   }, [dayQueries]);
 
@@ -220,7 +253,7 @@ export default function Summary() {
           <LoadingSpinner />
         ) : (
           <>
-            <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
               <div className="rounded-2xl border bg-white p-4 shadow-sm">
                 <div className="mb-2 flex items-center gap-2 text-muted-foreground">
                   <Coins className="h-4 w-4" /> Koszt (okres)
@@ -247,6 +280,21 @@ export default function Summary() {
                   <CalendarDays className="h-4 w-4" /> Dni z danymi
                 </div>
                 <div className="text-2xl font-bold">{analytics.days.length}</div>
+              </div>
+
+
+              <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                <div className="mb-2 flex items-center gap-2 text-muted-foreground">
+                  <Flame className="h-4 w-4" /> Śr. zjedzone kcal (Tysia)
+                </div>
+                <div className="text-2xl font-bold">{analytics.perPersonAvgEatenCalories.A} kcal</div>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                <div className="mb-2 flex items-center gap-2 text-muted-foreground">
+                  <Flame className="h-4 w-4" /> Śr. zjedzone kcal (Mati)
+                </div>
+                <div className="text-2xl font-bold">{analytics.perPersonAvgEatenCalories.B} kcal</div>
               </div>
             </section>
 
