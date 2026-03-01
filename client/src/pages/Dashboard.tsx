@@ -10,7 +10,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Flame, CheckCircle2, Circle, CalendarDays, ChevronLeft, ChevronRight, Settings2, Wallet, Eye, Check, ChevronsUpDown, X, PlusCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { api } from "@shared/routes";
@@ -23,6 +23,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { RecipeView } from "@/components/RecipeView";
 
 export default function Dashboard() {
+  type PersonTargets = { calories: number; protein: number; carbs: number; fat: number };
   const [date, setDate] = useState(new Date());
   const dateStr = format(date, "yyyy-MM-dd");
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -41,6 +42,10 @@ export default function Dashboard() {
   const [quickCustomProtein, setQuickCustomProtein] = useState<number>(25);
   const [quickCustomCarbs, setQuickCustomCarbs] = useState<number>(45);
   const [quickCustomFat, setQuickCustomFat] = useState<number>(15);
+  const [targetsByPerson, setTargetsByPerson] = useState<Record<"A" | "B", PersonTargets>>({
+    A: { calories: 1850, protein: 120, carbs: 205, fat: 61 },
+    B: { calories: 2700, protein: 170, carbs: 302, fat: 90 },
+  });
 
   const [isEditingIngredients, setIsEditingIngredients] = useState(false);
   const [editingMealIngredients, setEditingMealIngredients] = useState<any[]>([]);
@@ -129,6 +134,38 @@ export default function Dashboard() {
     queryKey: ["/api/user-settings"],
   });
 
+  useEffect(() => {
+    if (!settings) return;
+    const baseTargets = {
+      calories: settings.targetCalories ?? 2000,
+      protein: settings.targetProtein ?? 150,
+      carbs: settings.targetCarbs ?? 200,
+      fat: settings.targetFat ?? 65,
+    };
+
+    let localOverrides: any = {};
+    try {
+      localOverrides = JSON.parse(localStorage.getItem("dashboard-person-targets") || "{}");
+    } catch {
+      localOverrides = {};
+    }
+
+    setTargetsByPerson({
+      A: {
+        calories: Number(localOverrides?.A?.calories ?? baseTargets.calories),
+        protein: Number(localOverrides?.A?.protein ?? baseTargets.protein),
+        carbs: Number(localOverrides?.A?.carbs ?? baseTargets.carbs),
+        fat: Number(localOverrides?.A?.fat ?? baseTargets.fat),
+      },
+      B: {
+        calories: Number(localOverrides?.B?.calories ?? baseTargets.calories),
+        protein: Number(localOverrides?.B?.protein ?? baseTargets.protein),
+        carbs: Number(localOverrides?.B?.carbs ?? baseTargets.carbs),
+        fat: Number(localOverrides?.B?.fat ?? baseTargets.fat),
+      },
+    });
+  }, [settings]);
+
   const updateSettingsMutation = useMutation({
     mutationFn: async (newSettings: any) => {
       const res = await apiRequest("PATCH", "/api/user-settings", newSettings);
@@ -141,7 +178,6 @@ export default function Dashboard() {
 
   if (isLoadingPlan || isLoadingSettings) return <Layout><LoadingSpinner /></Layout>;
 
-  const targets = settings || { targetCalories: 2000, targetProtein: 150, targetCarbs: 200, targetFat: 65 };
   const isToday = dateStr === todayStr;
   const allEntries = dayPlan?.entries || [];
   const personName: Record<string, string> = { A: "Tysia", B: "Mati" };
@@ -187,6 +223,8 @@ export default function Dashboard() {
   };
 
   const consumed = calculateConsumed(allEntries);
+  const consumedA = calculateConsumed(allEntries.filter((e: any) => (e.person || "A") === "A"));
+  const consumedB = calculateConsumed(allEntries.filter((e: any) => (e.person || "A") === "B"));
 
   const totalDayCost = (dayPlan?.entries || []).reduce((acc: number, entry: any) => {
     const recipe = entry.recipe;
@@ -210,6 +248,41 @@ export default function Dashboard() {
     setQuickCustomProtein(25);
     setQuickCustomCarbs(45);
     setQuickCustomFat(15);
+  };
+
+  const updatePersonTargets = (person: "A" | "B", key: keyof PersonTargets, value: number) => {
+    const next = {
+      ...targetsByPerson,
+      [person]: {
+        ...targetsByPerson[person],
+        [key]: Number(value) || 0,
+      },
+    };
+    setTargetsByPerson(next);
+    localStorage.setItem("dashboard-person-targets", JSON.stringify(next));
+
+    if (person === "A") {
+      const mapKey: Record<keyof PersonTargets, string> = {
+        calories: "targetCalories",
+        protein: "targetProtein",
+        carbs: "targetCarbs",
+        fat: "targetFat",
+      };
+      updateSettingsMutation.mutate({ [mapKey[key]]: Number(value) || 0 });
+    }
+  };
+
+  const updateServingsQuick = (entry: any, nextServings: number) => {
+    const parsed = Number(nextServings);
+    if (!parsed || parsed <= 0) return;
+
+    updateMealEntry({
+      id: entry.id,
+      updates: {
+        servings: parsed,
+        isEaten: !!entry.isEaten,
+      },
+    });
   };
 
   const handleQuickAddMeal = () => {
@@ -385,43 +458,48 @@ export default function Dashboard() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Ustawienia celów</DialogTitle>
+                <DialogTitle>Ustawienia celów (osobno dla każdej osoby)</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Kalorie (kcal)</label>
-                    <Input 
-                      type="number" 
-                      defaultValue={targets.targetCalories}
-                      onBlur={(e) => updateSettingsMutation.mutate({ targetCalories: Number(e.target.value) })}
-                    />
+                {(["A", "B"] as const).map((person) => (
+                  <div key={person} className="space-y-3 rounded-xl border border-border p-3">
+                    <p className="text-sm font-semibold">{personName[person]}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Kalorie (kcal)</label>
+                        <Input
+                          type="number"
+                          value={targetsByPerson[person].calories}
+                          onChange={(e) => updatePersonTargets(person, "calories", Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Białko (g)</label>
+                        <Input
+                          type="number"
+                          value={targetsByPerson[person].protein}
+                          onChange={(e) => updatePersonTargets(person, "protein", Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Węglowodany (g)</label>
+                        <Input
+                          type="number"
+                          value={targetsByPerson[person].carbs}
+                          onChange={(e) => updatePersonTargets(person, "carbs", Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Tłuszcze (g)</label>
+                        <Input
+                          type="number"
+                          value={targetsByPerson[person].fat}
+                          onChange={(e) => updatePersonTargets(person, "fat", Number(e.target.value))}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Białko (g)</label>
-                    <Input 
-                      type="number" 
-                      defaultValue={targets.targetProtein}
-                      onBlur={(e) => updateSettingsMutation.mutate({ targetProtein: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Węglowodany (g)</label>
-                    <Input 
-                      type="number" 
-                      defaultValue={targets.targetCarbs}
-                      onBlur={(e) => updateSettingsMutation.mutate({ targetCarbs: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Tłuszcze (g)</label>
-                    <Input 
-                      type="number" 
-                      defaultValue={targets.targetFat}
-                      onBlur={(e) => updateSettingsMutation.mutate({ targetFat: Number(e.target.value) })}
-                    />
-                  </div>
-                </div>
+                ))}
               </div>
             </DialogContent>
           </Dialog>
@@ -451,11 +529,25 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <NutritionRing current={consumed.calories} target={targets.targetCalories} label="Kalorie" color="hsl(var(--primary))" unit="kcal" />
-        <NutritionRing current={consumed.protein} target={targets.targetProtein} label="Białko" color="#3b82f6" unit="g" />
-        <NutritionRing current={consumed.carbs} target={targets.targetCarbs} label="Węgle" color="#f59e0b" unit="g" />
-        <NutritionRing current={consumed.fat} target={targets.targetFat} label="Tłuszcze" color="#ef4444" unit="g" />
+      <div className="space-y-4 mb-8">
+        <div className="bg-white rounded-2xl p-4 border border-border/50">
+          <p className="text-sm font-semibold mb-3">Tysia</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <NutritionRing current={consumedA.calories} target={targetsByPerson.A.calories} label="Kalorie" color="hsl(var(--primary))" unit="kcal" />
+            <NutritionRing current={consumedA.protein} target={targetsByPerson.A.protein} label="Białko" color="#3b82f6" unit="g" />
+            <NutritionRing current={consumedA.carbs} target={targetsByPerson.A.carbs} label="Węgle" color="#f59e0b" unit="g" />
+            <NutritionRing current={consumedA.fat} target={targetsByPerson.A.fat} label="Tłuszcze" color="#ef4444" unit="g" />
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-border/50">
+          <p className="text-sm font-semibold mb-3">Mati</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <NutritionRing current={consumedB.calories} target={targetsByPerson.B.calories} label="Kalorie" color="hsl(var(--primary))" unit="kcal" />
+            <NutritionRing current={consumedB.protein} target={targetsByPerson.B.protein} label="Białko" color="#3b82f6" unit="g" />
+            <NutritionRing current={consumedB.carbs} target={targetsByPerson.B.carbs} label="Węgle" color="#f59e0b" unit="g" />
+            <NutritionRing current={consumedB.fat} target={targetsByPerson.B.fat} label="Tłuszcze" color="#ef4444" unit="g" />
+          </div>
+        </div>
       </div>
 
       <RecipeView 
@@ -547,6 +639,23 @@ export default function Dashboard() {
                                   {personName[meal.person || "A"]}: x{Number(meal.servings) || 1}
                                 </span>
                               )}
+                              <div className="flex items-center gap-1 rounded-full border border-border bg-white px-1 py-0.5">
+                                <button
+                                  className="h-5 w-5 text-xs rounded-full hover:bg-secondary"
+                                  onClick={() => updateServingsQuick(meal, Math.max(0.25, (Number(meal.servings) || 1) - 0.25))}
+                                  title="Zmniejsz porcję"
+                                >
+                                  -
+                                </button>
+                                <span className="text-[10px] font-semibold min-w-[32px] text-center">{Number(meal.servings || 1).toFixed(2).replace(/\.00$/, "")}</span>
+                                <button
+                                  className="h-5 w-5 text-xs rounded-full hover:bg-secondary"
+                                  onClick={() => updateServingsQuick(meal, (Number(meal.servings) || 1) + 0.25)}
+                                  title="Zwiększ porcję"
+                                >
+                                  +
+                                </button>
+                              </div>
                             </div>
                             <div className="flex items-center gap-3">
                               <p className="text-xs text-muted-foreground flex items-center gap-1">
