@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import type { ScalingType } from "@shared/scaling";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -43,7 +44,16 @@ const createRecipeSchema = z.object({
   imageUrl: z.string().optional().or(z.literal("")),
   ingredients: z.array(z.object({
     ingredientId: z.coerce.number(),
-    amount: z.coerce.number().min(1),
+    amount: z.coerce.number().min(0),
+    baseAmount: z.coerce.number().min(0).optional(),
+    unit: z.string().min(1).default("g"),
+    scalingType: z.enum(["LINEAR", "FIXED", "STEP", "FORMULA"]).default("LINEAR"),
+    scalingFormula: z.string().optional(),
+    stepThresholds: z.array(z.object({
+      minServings: z.coerce.number().min(0),
+      maxServings: z.coerce.number().min(0).nullable().optional(),
+      amount: z.coerce.number().min(0),
+    })).optional().default([]),
   })).min(1, "Add at least one ingredient"),
   frequentAddons: z.array(z.object({
     ingredientId: z.coerce.number(),
@@ -99,7 +109,7 @@ export default function Recipes() {
         return (b.stats?.calories || 0) - (a.stats?.calories || 0);
       case "value": {
         const getPrice = (r: any) => (r.ingredients || []).reduce((sum: number, ri: any) => 
-          sum + (ri.ingredient ? (ri.ingredient.price * ri.amount / 100) : 0), 0) / (r.servings || 1);
+          sum + (ri.ingredient ? (ri.ingredient.price * getIngredientAmount(ri) / 100) : 0), 0) / (r.servings || 1);
         const valA = (a.stats?.calories || 0) / (getPrice(a) || 1);
         const valB = (b.stats?.calories || 0) / (getPrice(b) || 1);
         return valB - valA;
@@ -228,7 +238,7 @@ export default function Recipes() {
       prepTime: 15,
       servings: 1,
       imageUrl: "",
-      ingredients: [{ ingredientId: 0, amount: 100 }],
+      ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
       frequentAddons: [] as { ingredientId: number; amount: number }[],
     },
   });
@@ -250,10 +260,12 @@ export default function Recipes() {
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [viewingRecipe, setViewingRecipe] = useState<any>(null);
 
+  const getIngredientAmount = (ri: any) => Number(ri?.baseAmount ?? ri?.amount ?? 0);
+
   const getRecipeCaloriesPerServing = (recipe: any) => {
     const servings = Number(recipe?.servings) || 1;
     const baseTotal = (recipe?.ingredients || []).reduce((sum: number, ri: any) =>
-      sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
+      sum + (ri.ingredient ? (ri.ingredient.calories * getIngredientAmount(ri) / 100) : 0), 0
     );
 
     const addonsTotal = (recipe?.frequentAddons || []).reduce((sum: number, addon: any) =>
@@ -292,11 +304,16 @@ export default function Recipes() {
       imageUrl: recipe.imageUrl || "",
       ingredients: recipe.ingredients.map((ri: any) => ({
         ingredientId: ri.ingredientId,
-        amount: ri.amount,
+        amount: Number(ri.baseAmount ?? ri.amount ?? 0),
+        baseAmount: Number(ri.baseAmount ?? ri.amount ?? 0),
+        unit: ri.unit || ri.ingredient?.unit || "g",
+        scalingType: ri.scalingType || "LINEAR",
+        scalingFormula: ri.scalingFormula || "",
+        stepThresholds: ri.stepThresholds || [],
       })),
       frequentAddons: (recipe.frequentAddons || []).map((addon: any) => ({
         ingredientId: addon.ingredientId,
-        amount: addon.amount,
+        amount: Number(addon.baseAmount ?? addon.amount ?? 0),
       })),
     });
     setIsOpen(true);
@@ -313,7 +330,7 @@ export default function Recipes() {
       prepTime: 15,
       servings: 1,
       imageUrl: "",
-      ingredients: [{ ingredientId: 0, amount: 100 }],
+      ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
       frequentAddons: [],
     });
   };
@@ -322,8 +339,21 @@ export default function Recipes() {
   const { mutate: updateRecipeMutation, isPending: isUpdating } = useUpdateRecipe();
 
   const onSubmit = (data: any) => {
+    const normalizedData = {
+      ...data,
+      ingredients: (data.ingredients || []).map((ingredient: any) => ({
+        ...ingredient,
+        baseAmount: Number(ingredient.baseAmount ?? ingredient.amount ?? 0),
+        amount: Number(ingredient.baseAmount ?? ingredient.amount ?? 0),
+        unit: ingredient.unit || "g",
+        scalingType: (ingredient.scalingType || "LINEAR") as ScalingType,
+        scalingFormula: ingredient.scalingType === "FORMULA" ? ingredient.scalingFormula : undefined,
+        stepThresholds: ingredient.scalingType === "STEP" ? (ingredient.stepThresholds || []) : undefined,
+      })),
+    };
+
     if (editingRecipe) {
-      updateRecipeMutation({ id: editingRecipe.id, data }, {
+      updateRecipeMutation({ id: editingRecipe.id, data: normalizedData }, {
         onSuccess: () => {
           closeDialog();
           toast({ title: "Sukces", description: "Przepis został zaktualizowany" });
@@ -333,7 +363,7 @@ export default function Recipes() {
         },
       });
     } else {
-      createRecipeMutation(data, {
+      createRecipeMutation(normalizedData, {
         onSuccess: () => {
           closeDialog();
           toast({ title: "Success", description: "Recipe created successfully" });
@@ -446,69 +476,115 @@ export default function Recipes() {
                   {fields.map((field, index) => {
                     const selectedId = Number(form.watch(`ingredients.${index}.ingredientId`));
                     return (
-                      <div key={field.id} className="flex gap-2 items-end bg-secondary/20 p-2 rounded-xl border border-border/50">
-                        <div className="flex-1">
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                className={cn(
-                                  "w-full justify-between h-9 rounded-lg bg-background font-normal",
-                                  !selectedId && "text-muted-foreground"
-                                )}
-                              >
-                                {selectedId
-                                  ? (availableIngredients || []).find((i: any) => i.id === selectedId)?.name
-                                  : "Wybierz składnik"}
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[300px] p-0 bg-white border border-border shadow-md" align="start">
-                              <Command>
-                                <CommandInput placeholder="Szukaj składnika..." onKeyDown={(event) => event.stopPropagation()} />
-                                <CommandList>
-                                  <CommandEmpty>Nie znaleziono składnika.</CommandEmpty>
-                                  <CommandGroup>
-                                    {(availableIngredients || []).map((i: any) => (
-                                      <CommandItem
-                                        key={i.id}
-                                        value={i.name}
-                                        onSelect={() => {
-                                          form.setValue(`ingredients.${index}.ingredientId`, i.id);
-                                        }}
-                                      >
-                                        <Check
-                                          className={cn(
-                                            "mr-2 h-4 w-4",
-                                            selectedId === i.id ? "opacity-100" : "opacity-0"
-                                          )}
-                                        />
-                                        <div className="flex flex-col">
-                                          <span>{i.name}</span>
-                                          <span className="text-[10px] text-muted-foreground">
-                                            {i.calories} kcal {i.category ? `[${i.category}]` : ""}
-                                          </span>
-                                        </div>
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
+                      <div key={field.id} className="bg-secondary/20 p-2 rounded-xl border border-border/50">
+                        <div className="flex gap-2 items-end">
+                          <div className="flex-1">
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className={cn(
+                                    "w-full justify-between h-9 rounded-lg bg-background font-normal",
+                                    !selectedId && "text-muted-foreground"
+                                  )}
+                                >
+                                  {selectedId
+                                    ? (availableIngredients || []).find((i: any) => i.id === selectedId)?.name
+                                    : "Wybierz składnik"}
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-[300px] p-0 bg-white border border-border shadow-md" align="start">
+                                <Command>
+                                  <CommandInput placeholder="Szukaj składnika..." onKeyDown={(event) => event.stopPropagation()} />
+                                  <CommandList>
+                                    <CommandEmpty>Nie znaleziono składnika.</CommandEmpty>
+                                    <CommandGroup>
+                                      {(availableIngredients || []).map((i: any) => (
+                                        <CommandItem
+                                          key={i.id}
+                                          value={i.name}
+                                          onSelect={() => {
+                                            form.setValue(`ingredients.${index}.ingredientId`, i.id);
+                                            if (!form.getValues(`ingredients.${index}.unit` as const)) {
+                                              form.setValue(`ingredients.${index}.unit` as const, i.unit || "g");
+                                            }
+                                          }}
+                                        >
+                                          <Check
+                                            className={cn(
+                                              "mr-2 h-4 w-4",
+                                              selectedId === i.id ? "opacity-100" : "opacity-0"
+                                            )}
+                                          />
+                                          <div className="flex flex-col">
+                                            <span>{i.name}</span>
+                                            <span className="text-[10px] text-muted-foreground">
+                                              {i.calories} kcal {i.category ? `[${i.category}]` : ""}
+                                            </span>
+                                          </div>
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                          <div className="w-24">
+                            <Input type="number" placeholder="Bazowa" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.baseAmount` as const)} />
+                          </div>
+                          <div className="w-24">
+                            <Input placeholder="Jedn." className="h-9 rounded-lg" {...form.register(`ingredients.${index}.unit` as const)} />
+                          </div>
+                          <div className="w-36">
+                            <Select
+                              value={form.watch(`ingredients.${index}.scalingType`) || "LINEAR"}
+                              onValueChange={(value) => form.setValue(`ingredients.${index}.scalingType`, value as any)}
+                            >
+                              <SelectTrigger className="h-9 rounded-lg"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="LINEAR">LINEAR</SelectItem>
+                                <SelectItem value="FIXED">FIXED</SelectItem>
+                                <SelectItem value="STEP">STEP</SelectItem>
+                                <SelectItem value="FORMULA">FORMULA</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-red-50 hover:text-red-500" onClick={() => remove(index)}>
+                            <X className="w-4 h-4" />
+                          </Button>
                         </div>
-                        <div className="w-24">
-                          <Input type="number" placeholder="Waga (g)" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.amount` as const)} />
-                        </div>
-                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-red-50 hover:text-red-500" onClick={() => remove(index)}>
-                          <X className="w-4 h-4" />
-                        </Button>
+                        {form.watch(`ingredients.${index}.scalingType`) === "FORMULA" && (
+                          <div className="mt-2">
+                            <Input placeholder="np. 100 + (scaleFactor - 1) * 50" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.scalingFormula` as const)} />
+                          </div>
+                        )}
+                        {form.watch(`ingredients.${index}.scalingType`) === "STEP" && (
+                          <div className="mt-2 space-y-2">
+                            {(form.watch(`ingredients.${index}.stepThresholds`) || []).map((_: any, thresholdIndex: number) => (
+                              <div key={thresholdIndex} className="grid grid-cols-4 gap-2 items-center">
+                                <Input type="number" placeholder="Od porcji" {...form.register(`ingredients.${index}.stepThresholds.${thresholdIndex}.minServings` as const)} />
+                                <Input type="number" placeholder="Do porcji" {...form.register(`ingredients.${index}.stepThresholds.${thresholdIndex}.maxServings` as const)} />
+                                <Input type="number" placeholder="Ilość" {...form.register(`ingredients.${index}.stepThresholds.${thresholdIndex}.amount` as const)} />
+                                <Button type="button" variant="ghost" onClick={() => {
+                                  const current = form.getValues(`ingredients.${index}.stepThresholds`) || [];
+                                  form.setValue(`ingredients.${index}.stepThresholds`, current.filter((_: any, i: number) => i !== thresholdIndex));
+                                }}>Usuń</Button>
+                              </div>
+                            ))}
+                            <Button type="button" variant="outline" onClick={() => {
+                              const current = form.getValues(`ingredients.${index}.stepThresholds`) || [];
+                              form.setValue(`ingredients.${index}.stepThresholds`, [...current, { minServings: 1, maxServings: null, amount: Number(form.getValues(`ingredients.${index}.baseAmount`) || 0) }]);
+                            }}>+ Próg</Button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-                <Button type="button" variant="outline" size="sm" className="rounded-lg border-dashed w-full py-5 border-2 hover:bg-primary/5 hover:border-primary/50 transition-all" onClick={() => append({ ingredientId: 0, amount: 100 })}>
+                <Button type="button" variant="outline" size="sm" className="rounded-lg border-dashed w-full py-5 border-2 hover:bg-primary/5 hover:border-primary/50 transition-all" onClick={() => append({ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] })}>
                   + Dodaj kolejny składnik
                 </Button>
                 {form.formState.errors.ingredients && <p className="text-red-500 text-xs mt-1">{form.formState.errors.ingredients.message}</p>}
@@ -519,7 +595,7 @@ export default function Recipes() {
                   <label className="text-sm font-medium">Najczęste dodatki (opcjonalnie)</label>
                 </div>
                 <div className="space-y-3 mb-3">
-                  {frequentAddonFields.map((field, index) => {
+                                    {frequentAddonFields.map((field, index) => {
                     const selectedId = Number(form.watch(`frequentAddons.${index}.ingredientId`));
                     return (
                       <div key={field.id} className="flex gap-2 items-end bg-emerald-50/60 p-2 rounded-xl border border-emerald-100">
@@ -734,7 +810,7 @@ export default function Recipes() {
                             </div>
                             <div className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
                               {Math.round(((recipe.ingredients || []).reduce((sum: number, ri: any) => 
-                                sum + (ri.ingredient ? (ri.ingredient.price * ri.amount / 100) : 0), 0)) / (recipe.servings || 1)
+                                sum + (ri.ingredient ? (ri.ingredient.price * getIngredientAmount(ri) / 100) : 0), 0)) / (recipe.servings || 1)
                               )} PLN / porcja
                             </div>
                           </div>

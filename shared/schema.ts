@@ -1,5 +1,5 @@
 
-import { pgTable, text, serial, integer, boolean, timestamp, real, date } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, real, date, jsonb, pgEnum } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -41,11 +41,18 @@ export const recipes = pgTable("recipes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const ingredientScalingTypeEnum = pgEnum("ingredient_scaling_type", ["LINEAR", "FIXED", "STEP", "FORMULA"]);
+
 export const recipeIngredients = pgTable("recipe_ingredients", {
   id: serial("id").primaryKey(),
   recipeId: integer("recipe_id").notNull(),
   ingredientId: integer("ingredient_id").notNull(),
-  amount: integer("amount").notNull(), // Amount in default unit
+  amount: integer("amount").notNull(), // Legacy amount (kept for backward compatibility)
+  baseAmount: real("base_amount").notNull(),
+  unit: text("unit").notNull().default("g"),
+  scalingType: ingredientScalingTypeEnum("scaling_type").notNull().default("LINEAR"),
+  scalingFormula: text("scaling_formula"),
+  stepThresholds: jsonb("step_thresholds").$type<{ minServings: number; maxServings?: number | null; amount: number }[]>(),
 });
 
 export const recipeFrequentAddons = pgTable("recipe_frequent_addons", {
