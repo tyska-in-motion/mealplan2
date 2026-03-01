@@ -37,8 +37,14 @@ export function RecipeView({
     ? mealEntryIngredients 
     : recipe.ingredients;
 
-  const factor = servingsToUse / recipeServings;
   const frequentAddonSet = new Set((frequentAddonIds || []).map((id) => Number(id)));
+
+  const getScaledAmount = (ri: any) => {
+    if (typeof ri?.calculatedAmount === "number" && Number.isFinite(ri.calculatedAmount)) {
+      return ri.calculatedAmount;
+    }
+    return calculateScaledAmount(ri, servingsToUse, recipeServings);
+  };
 
   const baseCaloriesPerServing = Math.round((recipe.ingredients || []).reduce((sum: number, ri: any) =>
     sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
@@ -88,7 +94,7 @@ export function RecipeView({
               <p className="text-xl font-bold text-primary">
                 {Math.round(baseIngredients.reduce((sum: number, ri: any) => {
                   if (!ri.ingredient) return sum;
-                  const amount = calculateScaledAmount(ri, servingsToUse, recipeServings);
+                  const amount = getScaledAmount(ri);
                   return sum + (ri.ingredient.calories * amount / 100);
                 }, 0))}
               </p>
@@ -99,7 +105,7 @@ export function RecipeView({
               <p className="text-xl font-bold">
                 {Math.round(baseIngredients.reduce((sum: number, ri: any) => {
                   if (!ri.ingredient) return sum;
-                  const amount = calculateScaledAmount(ri, servingsToUse, recipeServings);
+                  const amount = getScaledAmount(ri);
                   return sum + (ri.ingredient.protein * amount / 100);
                 }, 0))}g
               </p>
@@ -109,7 +115,7 @@ export function RecipeView({
               <p className="text-xl font-bold">
                 {Math.round(baseIngredients.reduce((sum: number, ri: any) => {
                   if (!ri.ingredient) return sum;
-                  const amount = calculateScaledAmount(ri, servingsToUse, recipeServings);
+                  const amount = getScaledAmount(ri);
                   return sum + (ri.ingredient.carbs * amount / 100);
                 }, 0))}g
               </p>
@@ -119,7 +125,7 @@ export function RecipeView({
               <p className="text-xl font-bold">
                 {Math.round(baseIngredients.reduce((sum: number, ri: any) => {
                   if (!ri.ingredient) return sum;
-                  const amount = calculateScaledAmount(ri, servingsToUse, recipeServings);
+                  const amount = getScaledAmount(ri);
                   return sum + (ri.ingredient.fat * amount / 100);
                 }, 0))}g
               </p>
@@ -156,7 +162,7 @@ export function RecipeView({
                         )}
                       </span>
                       <span className="font-medium">
-                        {Math.round(calculateScaledAmount(ri, servingsToUse, recipeServings))}{ri.unit || "g"}
+                        {Math.round(getScaledAmount(ri))}{ri.unit || "g"}
                       </span>
                     </div>
                     {Number(ri.ingredient?.unitWeight || 0) > 0 && (

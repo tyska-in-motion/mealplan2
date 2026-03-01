@@ -26,6 +26,22 @@ const recipeIngredientInputSchema = z.object({
   stepThresholds: z.array(stepThresholdSchema).optional(),
 });
 
+
+function resolveIngredientForScaling(entry: any, ingredientRow: any) {
+  const recipeIngredient = (entry?.recipe?.ingredients || []).find(
+    (ri: any) => Number(ri.ingredientId) === Number(ingredientRow.ingredientId),
+  );
+
+  return {
+    ...recipeIngredient,
+    ...ingredientRow,
+    baseAmount: Number(ingredientRow?.baseAmount ?? ingredientRow?.amount ?? recipeIngredient?.baseAmount ?? recipeIngredient?.amount ?? 0),
+    scalingType: ingredientRow?.scalingType ?? recipeIngredient?.scalingType ?? "LINEAR",
+    scalingFormula: ingredientRow?.scalingFormula ?? recipeIngredient?.scalingFormula,
+    stepThresholds: ingredientRow?.stepThresholds ?? recipeIngredient?.stepThresholds,
+  };
+}
+
 // Extend Request type for multer
 interface MulterRequest extends Request {
   file?: Express.Multer.File;
@@ -270,7 +286,7 @@ export async function registerRoutes(
       if (ingredientsToUse.length > 0) {
         ingredientsToUse.forEach(ri => {
           if (!ri.ingredient) return;
-          const scaledAmount = calculateScaledAmount(ri as any, entryServings, recipeServings);
+          const scaledAmount = calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings);
           const multiplier = scaledAmount / 100;
           totalCalories += (ri.ingredient.calories * multiplier);
           totalProtein += (ri.ingredient.protein * multiplier);
@@ -293,14 +309,14 @@ export async function registerRoutes(
         ...entry,
         ingredients: (entry.ingredients || []).map((ri: any) => ({
           ...ri,
-          calculatedAmount: calculateScaledAmount(ri, entryServings, recipeServings),
+          calculatedAmount: calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings),
         })),
         recipe: entry.recipe
           ? {
               ...entry.recipe,
               ingredients: (entry.recipe.ingredients || []).map((ri: any) => ({
                 ...ri,
-                calculatedAmount: calculateScaledAmount(ri, entryServings, recipeServings),
+                calculatedAmount: calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings),
               })),
             }
           : entry.recipe,
@@ -428,7 +444,7 @@ export async function registerRoutes(
         const existing = shoppingMap.get(ri.ingredientId);
         const entryServings = Number(entry.servings) || 1;
         const recipeServings = Number(entry.recipe?.servings || 1);
-        const amount = calculateScaledAmount(ri as any, entryServings, recipeServings);
+        const amount = calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings);
         if (existing) {
           existing.amount += amount;
         } else {
