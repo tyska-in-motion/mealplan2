@@ -1,12 +1,13 @@
-import { useDayPlan, useUpdateMealEntry, useToggleEaten } from "@/hooks/use-meal-plan";
+import { useDayPlan, useUpdateMealEntry, useToggleEaten, useAddMealEntry } from "@/hooks/use-meal-plan";
 import { useIngredients } from "@/hooks/use-ingredients";
+import { useRecipes } from "@/hooks/use-recipes";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays, subDays } from "date-fns";
 import { pl } from "date-fns/locale";
 import { NutritionRing } from "@/components/NutritionRing";
 import { Layout } from "@/components/Layout";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { Flame, CheckCircle2, Circle, CalendarDays, ChevronLeft, ChevronRight, Settings2, Wallet, Eye, Clock, ChefHat, Check, ChevronsUpDown, X } from "lucide-react";
+import { Flame, CheckCircle2, Circle, CalendarDays, ChevronLeft, ChevronRight, Settings2, Wallet, Eye, Check, ChevronsUpDown, X, PlusCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -16,6 +17,7 @@ import { api } from "@shared/routes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { RecipeView } from "@/components/RecipeView";
@@ -29,6 +31,16 @@ export default function Dashboard() {
   const [viewingRecipe, setViewingRecipe] = useState<any>(null);
   const [viewingMeal, setViewingMeal] = useState<any>(null);
   const [viewingPlannedServings, setViewingPlannedServings] = useState<number | undefined>(undefined);
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [quickAddMode, setQuickAddMode] = useState<"recipe" | "custom">("recipe");
+  const [quickMealType, setQuickMealType] = useState("lunch");
+  const [quickPerson, setQuickPerson] = useState<"A" | "B">("A");
+  const [quickRecipeId, setQuickRecipeId] = useState<number | null>(null);
+  const [quickCustomName, setQuickCustomName] = useState("");
+  const [quickCustomCalories, setQuickCustomCalories] = useState<number>(450);
+  const [quickCustomProtein, setQuickCustomProtein] = useState<number>(25);
+  const [quickCustomCarbs, setQuickCustomCarbs] = useState<number>(45);
+  const [quickCustomFat, setQuickCustomFat] = useState<number>(15);
 
   const [isEditingIngredients, setIsEditingIngredients] = useState(false);
   const [editingMealIngredients, setEditingMealIngredients] = useState<any[]>([]);
@@ -36,6 +48,8 @@ export default function Dashboard() {
   const { toast } = useToast();
 
   const { mutate: updateMealEntry, isPending: isSaving } = useUpdateMealEntry();
+  const { mutate: addEntry, isPending: isQuickAdding } = useAddMealEntry();
+  const { data: recipes } = useRecipes();
 
   const startEditing = () => {
     const currentIngredients = (viewingMeal?.ingredients && viewingMeal.ingredients.length > 0)
@@ -186,6 +200,68 @@ export default function Dashboard() {
     );
   }, 0) || 0;
 
+  const resetQuickAdd = () => {
+    setQuickAddMode("recipe");
+    setQuickMealType("lunch");
+    setQuickPerson("A");
+    setQuickRecipeId(null);
+    setQuickCustomName("");
+    setQuickCustomCalories(450);
+    setQuickCustomProtein(25);
+    setQuickCustomCarbs(45);
+    setQuickCustomFat(15);
+  };
+
+  const handleQuickAddMeal = () => {
+    if (quickAddMode === "recipe") {
+      if (!quickRecipeId) {
+        toast({ title: "Błąd", description: "Wybierz przepis.", variant: "destructive" });
+        return;
+      }
+
+      addEntry({
+        date: dateStr,
+        mealType: quickMealType,
+        person: quickPerson,
+        recipeId: quickRecipeId,
+        servings: 1,
+        isEaten: true,
+      }, {
+        onSuccess: () => {
+          setIsQuickAddOpen(false);
+          resetQuickAdd();
+          toast({ title: "Dodano", description: "Posiłek został dodany do planu i oznaczony jako zjedzony." });
+        },
+      });
+      return;
+    }
+
+    if (!quickCustomName.trim()) {
+      toast({ title: "Błąd", description: "Podaj nazwę posiłku.", variant: "destructive" });
+      return;
+    }
+
+    addEntry({
+      date: dateStr,
+      mealType: quickMealType,
+      person: quickPerson,
+      customName: quickCustomName.trim(),
+      customCalories: Number(quickCustomCalories) || 0,
+      customProtein: Number(quickCustomProtein) || 0,
+      customCarbs: Number(quickCustomCarbs) || 0,
+      customFat: Number(quickCustomFat) || 0,
+      servings: 1,
+      isEaten: true,
+      recipeId: null as any,
+    }, {
+      onSuccess: () => {
+        setIsQuickAddOpen(false);
+        resetQuickAdd();
+        toast({ title: "Dodano", description: "Posiłek został dodany do planu i oznaczony jako zjedzony." });
+      },
+    });
+  };
+
   return (
     <Layout>
       <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -202,6 +278,105 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Dialog open={isQuickAddOpen} onOpenChange={(open) => {
+            setIsQuickAddOpen(open);
+            if (!open) resetQuickAdd();
+          }}>
+            <DialogTrigger asChild>
+              <Button className="rounded-xl gap-2">
+                <PlusCircle className="w-4 h-4" />
+                Szybkie dodanie
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-xl bg-white">
+              <DialogHeader>
+                <DialogTitle>Szybko dodaj zjedzony posiłek</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium">Typ posiłku</label>
+                    <Select value={quickMealType} onValueChange={setQuickMealType}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="breakfast">Śniadanie</SelectItem>
+                        <SelectItem value="lunch">Obiad</SelectItem>
+                        <SelectItem value="dinner">Kolacja</SelectItem>
+                        <SelectItem value="snack">Przekąska</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Osoba</label>
+                    <Select value={quickPerson} onValueChange={(v: "A" | "B") => setQuickPerson(v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A">Tysia</SelectItem>
+                        <SelectItem value="B">Mati</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button type="button" variant={quickAddMode === "recipe" ? "default" : "outline"} onClick={() => setQuickAddMode("recipe")} className="flex-1">
+                    Z przepisu
+                  </Button>
+                  <Button type="button" variant={quickAddMode === "custom" ? "default" : "outline"} onClick={() => setQuickAddMode("custom")} className="flex-1">
+                    Własny posiłek
+                  </Button>
+                </div>
+
+                {quickAddMode === "recipe" ? (
+                  <div>
+                    <label className="text-sm font-medium">Przepis</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" role="combobox" className={cn("w-full justify-between", !quickRecipeId && "text-muted-foreground")}>
+                          {quickRecipeId ? recipes?.find((r) => r.id === quickRecipeId)?.name : "Wybierz przepis..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[440px] p-0">
+                        <Command>
+                          <CommandInput placeholder="Szukaj przepisu..." />
+                          <CommandList>
+                            <CommandEmpty>Nie znaleziono przepisu.</CommandEmpty>
+                            <CommandGroup>
+                              {recipes?.map((recipe) => (
+                                <CommandItem key={recipe.id} value={recipe.name} onSelect={() => setQuickRecipeId(recipe.id)}>
+                                  <Check className={cn("mr-2 h-4 w-4", quickRecipeId === recipe.id ? "opacity-100" : "opacity-0")} />
+                                  {recipe.name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium">Nazwa posiłku</label>
+                      <Input value={quickCustomName} onChange={(e) => setQuickCustomName(e.target.value)} placeholder="np. Kanapka po treningu" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className="text-sm font-medium">Kalorie</label><Input type="number" value={quickCustomCalories} onChange={(e) => setQuickCustomCalories(Number(e.target.value))} /></div>
+                      <div><label className="text-sm font-medium">Białko (g)</label><Input type="number" value={quickCustomProtein} onChange={(e) => setQuickCustomProtein(Number(e.target.value))} /></div>
+                      <div><label className="text-sm font-medium">Węglowodany (g)</label><Input type="number" value={quickCustomCarbs} onChange={(e) => setQuickCustomCarbs(Number(e.target.value))} /></div>
+                      <div><label className="text-sm font-medium">Tłuszcz (g)</label><Input type="number" value={quickCustomFat} onChange={(e) => setQuickCustomFat(Number(e.target.value))} /></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsQuickAddOpen(false)}>Anuluj</Button>
+                <Button onClick={handleQuickAddMeal} disabled={isQuickAdding}>{isQuickAdding ? "Dodawanie..." : "Dodaj i oznacz jako zjedzone"}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="outline" size="icon" className="rounded-xl">

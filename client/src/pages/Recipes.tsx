@@ -250,6 +250,22 @@ export default function Recipes() {
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [viewingRecipe, setViewingRecipe] = useState<any>(null);
 
+  const getRecipeCaloriesPerServing = (recipe: any) => {
+    const servings = Number(recipe?.servings) || 1;
+    const baseTotal = (recipe?.ingredients || []).reduce((sum: number, ri: any) =>
+      sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
+    );
+
+    const addonsTotal = (recipe?.frequentAddons || []).reduce((sum: number, addon: any) =>
+      sum + (addon.ingredient ? (addon.ingredient.calories * addon.amount / 100) : 0), 0
+    );
+
+    return {
+      base: Math.round(baseTotal / servings),
+      withAddons: Math.round((baseTotal + addonsTotal) / servings),
+    };
+  };
+
   const [isEditingIngredients, setIsEditingIngredients] = useState(false);
   const [editingMealIngredients, setEditingMealIngredients] = useState<any[]>([]);
   const updateMealEntry = useMutation({
@@ -733,9 +749,12 @@ export default function Recipes() {
                   <div className="flex justify-between text-xs text-muted-foreground font-medium">
                     <span className="flex items-center gap-1"><ChefHat className="w-3 h-3" /> {recipe.ingredients.length} składników ({recipe.servings || 1} porcji)</span>
                     <span>
-                      {Math.round(((recipe.ingredients || []).reduce((sum: number, ri: any) => 
-                        sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0)) / (recipe.servings || 1)
-                      )} kcal / porcja
+                      {(() => {
+                        const calories = getRecipeCaloriesPerServing(recipe);
+                        return calories.withAddons > calories.base
+                          ? `${calories.base}-${calories.withAddons} kcal / porcja`
+                          : `${calories.base} kcal / porcja`;
+                      })()}
                     </span>
                   </div>
                   <div className="grid grid-cols-4 gap-1 text-[10px] text-center text-muted-foreground">

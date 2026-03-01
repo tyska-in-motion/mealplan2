@@ -41,6 +41,15 @@ export function RecipeView({
   const macrosFactor = isPlannedView ? factor : (1 / recipeServings);
   const ingredientsFactor = isPlannedView ? factor : 1;
 
+  const baseCaloriesPerServing = Math.round((recipe.ingredients || []).reduce((sum: number, ri: any) =>
+    sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
+  ) / recipeServings);
+  const withAddonsCaloriesPerServing = Math.round(((recipe.ingredients || []).reduce((sum: number, ri: any) =>
+    sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
+  ) + (recipe.frequentAddons || []).reduce((sum: number, addon: any) =>
+    sum + (addon.ingredient ? (addon.ingredient.calories * addon.amount / 100) : 0), 0
+  )) / recipeServings);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white">
@@ -64,6 +73,13 @@ export function RecipeView({
               <span className="flex items-center gap-1 bg-primary/10 text-primary font-bold px-2 py-1 rounded-lg text-xs">
                 {isPlannedView ? `${servingsToUse} zaplanowanych porcji` : `${recipeServings} porcji`}
               </span>
+              {!isPlannedView && (
+                <span className="flex items-center gap-1 bg-amber-100/60 text-amber-900 font-semibold px-2 py-1 rounded-lg text-xs">
+                  {withAddonsCaloriesPerServing > baseCaloriesPerServing
+                    ? `${baseCaloriesPerServing}-${withAddonsCaloriesPerServing} kcal / porcja`
+                    : `${baseCaloriesPerServing} kcal / porcja`}
+                </span>
+              )}
             </div>
           </div>
           
