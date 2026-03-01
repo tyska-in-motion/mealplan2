@@ -51,29 +51,39 @@ export default function Summary() {
       .filter((day): day is SummaryData => !!day);
 
     const totalCost = days.reduce((sum, day) => sum + (Number(day.totalPrice) || 0), 0);
-    const totalCaloriesPlanned = days.reduce((sum, day) => sum + (Number(day.totalCalories) || 0), 0);
+    const calculateEntryNutrients = (entry: any) => {
+      const result = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+      const entryServings = Number(entry.servings) || 1;
 
-    const totalCaloriesEaten = days.reduce((sum, day) => {
-      const eaten = (day.entries || []).filter((entry: any) => entry.isEaten);
-      return sum + eaten.reduce((entrySum: number, entry: any) => {
-        if (!entry.recipe) {
-          const servings = Number(entry.servings) || 1;
-          return entrySum + (Number(entry.customCalories) || 0) * servings;
-        }
+      if (!entry.recipe) {
+        return {
+          calories: (Number(entry.customCalories) || 0) * entryServings,
+          protein: (Number(entry.customProtein) || 0) * entryServings,
+          carbs: (Number(entry.customCarbs) || 0) * entryServings,
+          fat: (Number(entry.customFat) || 0) * entryServings,
+        };
+      }
 
-        const recipeServings = Number(entry.recipe?.servings) || 1;
-        const entryServings = Number(entry.servings) || 1;
-        const factor = entryServings / recipeServings;
-        const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
+      const recipeServings = Number(entry.recipe?.servings) || 1;
+      const factor = entryServings / recipeServings;
+      const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
 
-        const kcal = ingredientsToUse.reduce((kcalSum: number, ri: any) => {
-          if (!ri.ingredient) return kcalSum;
-          return kcalSum + ((Number(ri.ingredient.calories) || 0) * (Number(ri.amount) || 0) / 100);
-        }, 0);
+      ingredientsToUse.forEach((ri: any) => {
+        if (!ri.ingredient) return;
+        const multiplier = (Number(ri.amount) || 0) / 100;
+        result.calories += (Number(ri.ingredient.calories) || 0) * multiplier;
+        result.protein += (Number(ri.ingredient.protein) || 0) * multiplier;
+        result.carbs += (Number(ri.ingredient.carbs) || 0) * multiplier;
+        result.fat += (Number(ri.ingredient.fat) || 0) * multiplier;
+      });
 
-        return entrySum + kcal * factor;
-      }, 0);
-    }, 0);
+      return {
+        calories: result.calories * factor,
+        protein: result.protein * factor,
+        carbs: result.carbs * factor,
+        fat: result.fat * factor,
+      };
+    };
 
     const ingredientMap = new Map<number, { name: string; totalAmount: number; usedInDays: Set<string> }>();
     const recipeMap = new Map<number, { name: string; count: number }>();
@@ -189,23 +199,14 @@ export default function Summary() {
     const getEatenCaloriesForPerson = (person: "A" | "B") => eatenEntries.reduce((sum: number, entry: any) => {
       if ((entry.person || "A") !== person) return sum;
 
-      if (!entry.recipe) {
-        const servings = Number(entry.servings) || 1;
-        return sum + (Number(entry.customCalories) || 0) * servings;
-      }
-
-      const recipeServings = Number(entry.recipe?.servings) || 1;
-      const entryServings = Number(entry.servings) || 1;
-      const factor = entryServings / recipeServings;
-      const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
-
-      const kcal = ingredientsToUse.reduce((kcalSum: number, ri: any) => {
-        if (!ri.ingredient) return kcalSum;
-        return kcalSum + ((Number(ri.ingredient.calories) || 0) * (Number(ri.amount) || 0) / 100);
-      }, 0);
-
-      return sum + kcal * factor;
+      return sum + calculateEntryNutrients(entry).calories;
     }, 0);
+
+    const getEatenMacroForPerson = (person: "A" | "B", macro: "protein" | "carbs" | "fat") =>
+      eatenEntries.reduce((sum: number, entry: any) => {
+        if ((entry.person || "A") !== person) return sum;
+        return sum + calculateEntryNutrients(entry)[macro];
+      }, 0);
 
     const perPersonAvgEatenCalories = {
       A: eatenEntries.filter((entry: any) => (entry.person || "A") === "A").length
@@ -216,15 +217,32 @@ export default function Summary() {
         : 0,
     };
 
+    const perPersonEntryCount = {
+      A: eatenEntries.filter((entry: any) => (entry.person || "A") === "A").length,
+      B: eatenEntries.filter((entry: any) => (entry.person || "A") === "B").length,
+    };
+
+    const perPersonAvgEatenMacros = {
+      A: {
+        protein: perPersonEntryCount.A ? Math.round(getEatenMacroForPerson("A", "protein") / perPersonEntryCount.A) : 0,
+        carbs: perPersonEntryCount.A ? Math.round(getEatenMacroForPerson("A", "carbs") / perPersonEntryCount.A) : 0,
+        fat: perPersonEntryCount.A ? Math.round(getEatenMacroForPerson("A", "fat") / perPersonEntryCount.A) : 0,
+      },
+      B: {
+        protein: perPersonEntryCount.B ? Math.round(getEatenMacroForPerson("B", "protein") / perPersonEntryCount.B) : 0,
+        carbs: perPersonEntryCount.B ? Math.round(getEatenMacroForPerson("B", "carbs") / perPersonEntryCount.B) : 0,
+        fat: perPersonEntryCount.B ? Math.round(getEatenMacroForPerson("B", "fat") / perPersonEntryCount.B) : 0,
+      },
+    };
+
     return {
       days,
       totalCost,
-      totalCaloriesPlanned,
-      totalCaloriesEaten,
       mostUsedIngredients,
       mostCookedRecipes,
       dailyHistory,
       perPersonAvgEatenCalories,
+      perPersonAvgEatenMacros,
     };
   }, [dayQueries]);
 
@@ -263,20 +281,6 @@ export default function Summary() {
 
               <div className="rounded-2xl border bg-white p-4 shadow-sm">
                 <div className="mb-2 flex items-center gap-2 text-muted-foreground">
-                  <Flame className="h-4 w-4" /> Kalorie zaplanowane
-                </div>
-                <div className="text-2xl font-bold">{Math.round(analytics.totalCaloriesPlanned)} kcal</div>
-              </div>
-
-              <div className="rounded-2xl border bg-white p-4 shadow-sm">
-                <div className="mb-2 flex items-center gap-2 text-muted-foreground">
-                  <Flame className="h-4 w-4" /> Kalorie zjedzone
-                </div>
-                <div className="text-2xl font-bold">{Math.round(analytics.totalCaloriesEaten)} kcal</div>
-              </div>
-
-              <div className="rounded-2xl border bg-white p-4 shadow-sm">
-                <div className="mb-2 flex items-center gap-2 text-muted-foreground">
                   <CalendarDays className="h-4 w-4" /> Dni z danymi
                 </div>
                 <div className="text-2xl font-bold">{analytics.days.length}</div>
@@ -288,6 +292,9 @@ export default function Summary() {
                   <Flame className="h-4 w-4" /> Śr. zjedzone kcal (Tysia)
                 </div>
                 <div className="text-2xl font-bold">{analytics.perPersonAvgEatenCalories.A} kcal</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  B: {analytics.perPersonAvgEatenMacros.A.protein}g • W: {analytics.perPersonAvgEatenMacros.A.carbs}g • T: {analytics.perPersonAvgEatenMacros.A.fat}g
+                </div>
               </div>
 
               <div className="rounded-2xl border bg-white p-4 shadow-sm">
@@ -295,6 +302,9 @@ export default function Summary() {
                   <Flame className="h-4 w-4" /> Śr. zjedzone kcal (Mati)
                 </div>
                 <div className="text-2xl font-bold">{analytics.perPersonAvgEatenCalories.B} kcal</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  B: {analytics.perPersonAvgEatenMacros.B.protein}g • W: {analytics.perPersonAvgEatenMacros.B.carbs}g • T: {analytics.perPersonAvgEatenMacros.B.fat}g
+                </div>
               </div>
             </section>
 
