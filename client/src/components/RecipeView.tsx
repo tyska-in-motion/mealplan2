@@ -50,6 +50,24 @@ export function RecipeView({
       .map((line: string) => line.replace(/^\d+[.)]\s*/, ""));
   }, [recipe?.instructions]);
 
+  const parseDurationFromStep = (step: string) => {
+    const explicitTimer = step.match(/\[timer\s*:\s*(\d+)\]/i);
+    if (explicitTimer) return Number(explicitTimer[1]);
+
+    const naturalLanguage = step.match(/(\d+)\s*(min|minut|minuty|minute|minutes)/i);
+    return naturalLanguage ? Number(naturalLanguage[1]) : 0;
+  };
+
+  const instructionSteps = useMemo(() => {
+    if (!recipe.instructions) return [];
+
+    return recipe.instructions
+      .split(/\n+/)
+      .map((line: string) => line.trim())
+      .filter(Boolean)
+      .map((line: string) => line.replace(/^\d+[.)]\s*/, ""));
+  }, [recipe.instructions]);
+
   const isPlannedView = plannedServings !== undefined;
   const recipeServings = Number(recipe?.servings) || 1;
   const servingsToUse = isPlannedView ? plannedServings : recipeServings;
