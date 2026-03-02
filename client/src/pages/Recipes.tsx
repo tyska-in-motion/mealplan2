@@ -83,6 +83,13 @@ export default function Recipes() {
   const [excludedDefaultIngredientIds, setExcludedDefaultIngredientIds] = useState<number[]>([]);
   const [instructionLinks, setInstructionLinks] = useState<InstructionLink[]>([]);
   const [newInstructionLink, setNewInstructionLink] = useState<InstructionLink>({ stepIndex: 0, text: "", ingredientId: 0, multiplier: 1 });
+  const [newInstructionLinkMultiplierInput, setNewInstructionLinkMultiplierInput] = useState("1");
+
+  const parsePositiveMultiplier = (value: string) => {
+    const normalized = value.replace(",", ".").trim();
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  };
 
   const allTags = Array.from(new Set(recipes?.flatMap(r => r.tags || []) || [])) as string[];
 
@@ -812,15 +819,24 @@ export default function Recipes() {
                     </Select>
                     <Input placeholder="Fragment tekstu" value={newInstructionLink.text} onChange={(e) => setNewInstructionLink((prev) => ({ ...prev, text: e.target.value }))} />
                     <Input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
+                      type="text"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]+"
                       placeholder="Mnożnik"
-                      value={newInstructionLink.multiplier ?? 1}
-                      onChange={(e) => setNewInstructionLink((prev) => ({
-                        ...prev,
-                        multiplier: Number(e.target.value) > 0 ? Number(e.target.value) : 1,
-                      }))}
+                      value={newInstructionLinkMultiplierInput}
+                      onChange={(e) => {
+                        const rawValue = e.target.value;
+                        setNewInstructionLinkMultiplierInput(rawValue);
+                        setNewInstructionLink((prev) => ({
+                          ...prev,
+                          multiplier: parsePositiveMultiplier(rawValue),
+                        }));
+                      }}
+                      onBlur={() => {
+                        const parsedMultiplier = parsePositiveMultiplier(newInstructionLinkMultiplierInput);
+                        setNewInstructionLink((prev) => ({ ...prev, multiplier: parsedMultiplier }));
+                        setNewInstructionLinkMultiplierInput(String(parsedMultiplier));
+                      }}
                     />
                     <div className="flex gap-2">
                       <Select value={String(newInstructionLink.ingredientId || "0")} onValueChange={(v) => setNewInstructionLink((prev) => ({ ...prev, ingredientId: Number(v) }))}>
@@ -836,8 +852,9 @@ export default function Recipes() {
                         variant="outline"
                         onClick={() => {
                           if (!newInstructionLink.text.trim() || !newInstructionLink.ingredientId) return;
-                          setInstructionLinks((prev) => [...prev, newInstructionLink]);
-                          setNewInstructionLink((prev) => ({ ...prev, text: "", multiplier: 1 }));
+                          const multiplier = parsePositiveMultiplier(newInstructionLinkMultiplierInput);
+                          setInstructionLinks((prev) => [...prev, { ...newInstructionLink, multiplier }]);
+                          setNewInstructionLink((prev) => ({ ...prev, text: "", multiplier }));
                         }}
                       >Dodaj</Button>
                     </div>
