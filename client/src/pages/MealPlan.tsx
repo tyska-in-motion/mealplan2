@@ -637,9 +637,9 @@ export default function MealPlan() {
           setIsAddOpen(true);
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto sm:max-h-[90vh] max-sm:h-[100dvh] max-sm:w-screen max-sm:max-h-none max-sm:max-w-none max-sm:overflow-x-hidden max-sm:p-3">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden sm:w-full sm:max-h-[90vh] max-sm:h-[100dvh] max-sm:w-screen max-sm:max-h-none max-sm:max-w-none max-sm:p-3">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">Dodaj do posiłku: {
+            <DialogTitle className="break-words pr-8 text-base leading-snug sm:text-lg">Dodaj do posiłku: {
               selectedMealType === "breakfast" ? "Śniadanie" : 
               selectedMealType === "lunch" ? "Obiad" : 
               selectedMealType === "dinner" ? "Kolacja" : "Przekąska"
@@ -772,7 +772,7 @@ export default function MealPlan() {
                               selectedAmount > 0 ? "border-emerald-200" : "border-border"
                             )}
                           >
-                            <span className="min-w-[140px] text-sm font-medium">
+                            <span className="text-sm font-medium sm:min-w-[140px]">
                               {addon.ingredient?.name || "Składnik"}
                             </span>
 
