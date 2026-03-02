@@ -39,6 +39,15 @@ const recipeIngredientInputSchema = z.object({
   stepThresholds: z.array(stepThresholdSchema).optional(),
 });
 
+const instructionSegmentSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({ type: z.literal("ingredient"), text: z.string(), ingredientId: z.number() }),
+]);
+
+const instructionStepSchema = z.object({
+  segments: z.array(instructionSegmentSchema),
+});
+
 export const api = {
   ingredients: {
     list: {
@@ -103,6 +112,7 @@ export const api = {
       method: 'POST' as const,
       path: '/api/recipes',
       input: insertRecipeSchema.extend({
+        instructionSteps: z.array(instructionStepSchema).optional(),
         servings: z.number().min(0.1).default(1),
         ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
@@ -135,6 +145,7 @@ export const api = {
       method: 'PATCH' as const,
       path: '/api/recipes/:id',
       input: insertRecipeSchema.extend({
+        instructionSteps: z.array(instructionStepSchema).optional(),
         servings: z.number().min(0.1).optional(),
         ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({

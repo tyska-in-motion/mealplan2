@@ -21,6 +21,7 @@ import {
   type MealEntryWithRecipe,
   type DaySummary,
   type UserSettings,
+  type InstructionStep,
 } from "@shared/schema";
 import { eq, sql, and, gte, lte, inArray } from "drizzle-orm";
 
@@ -34,8 +35,8 @@ export interface IStorage {
   // Recipes
   getRecipes(search?: string, ingredientId?: number): Promise<RecipeWithIngredients[]>;
   getRecipe(id: number): Promise<RecipeWithIngredients | undefined>;
-  createRecipe(recipe: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients>;
-  updateRecipe(id: number, recipe: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients>;
+  createRecipe(recipe: CreateRecipeRequest & { instructionSteps?: InstructionStep[]; ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients>;
+  updateRecipe(id: number, recipe: CreateRecipeRequest & { instructionSteps?: InstructionStep[]; ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients>;
   deleteRecipe(id: number): Promise<void>;
 
   // Meal Plan
@@ -169,12 +170,13 @@ export class DatabaseStorage implements IStorage {
     return recipe as RecipeWithIngredients | undefined;
   }
 
-  async createRecipe(req: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients> {
+  async createRecipe(req: CreateRecipeRequest & { instructionSteps?: InstructionStep[]; ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients> {
     const [recipe] = await db.insert(recipes).values({
       name: req.name,
       tags: req.tags,
       description: req.description,
       instructions: req.instructions,
+      instructionSteps: req.instructionSteps,
       prepTime: req.prepTime,
       imageUrl: req.imageUrl,
       isFavorite: req.isFavorite ?? false,
@@ -209,13 +211,14 @@ export class DatabaseStorage implements IStorage {
     return this.getRecipe(recipe.id) as Promise<RecipeWithIngredients>;
   }
 
-  async updateRecipe(id: number, req: CreateRecipeRequest & { ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients> {
+  async updateRecipe(id: number, req: CreateRecipeRequest & { instructionSteps?: InstructionStep[]; ingredients: { ingredientId: number; amount: number; baseAmount?: number; unit?: string; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA"; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[]; frequentAddons?: { ingredientId: number; amount: number }[] }): Promise<RecipeWithIngredients> {
     await db.update(recipes)
       .set({
         name: req.name,
         tags: req.tags,
         description: req.description,
         instructions: req.instructions,
+      instructionSteps: req.instructionSteps,
         prepTime: req.prepTime,
         imageUrl: req.imageUrl,
         isFavorite: req.isFavorite,

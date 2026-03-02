@@ -3,6 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Clock, ChefHat, CalendarPlus, Settings2, Play, Pause, RotateCcw, ChefHatIcon } from "lucide-react";
 import { calculateScaledAmount } from "@shared/scaling";
+import type { InstructionStep } from "@shared/schema";
+import { parseInstructionLines } from "@/lib/instruction-steps";
 
 const parseDurationFromStep = (step: string) => {
   const explicitTimer = step.match(/\[timer\s*:\s*(\d+)\]/i);
@@ -42,15 +44,10 @@ export function RecipeView({
   const [timerRemainingSeconds, setTimerRemainingSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  const instructionSteps = useMemo(() => {
-    if (!recipe?.instructions) return [];
-
-    return recipe.instructions
-      .split(/\n+/)
-      .map((line: string) => line.trim())
-      .filter(Boolean)
-      .map((line: string) => line.replace(/^\d+[.)]\s*/, ""));
-  }, [recipe?.instructions]);
+  const instructionSteps = useMemo<InstructionStep[]>(() => {
+    if (Array.isArray(recipe?.instructionSteps) && recipe.instructionSteps.length > 0) return recipe.instructionSteps;
+    return parseInstructionLines(recipe?.instructions).map((step) => ({ segments: [{ type: "text", text: step }] }));
+  }, [recipe?.instructionSteps, recipe?.instructions]);
 
   const isPlannedView = plannedServings !== undefined;
   const recipeServings = Number(recipe?.servings) || 1;
@@ -64,7 +61,10 @@ export function RecipeView({
   const frequentAddonSet = new Set((frequentAddonIds || []).map((id) => Number(id)));
   const availableIngredientSet = new Set((availableIngredientIds || []).map((id) => Number(id)));
 
-  const currentStepText = instructionSteps[currentStepIndex] || "";
+  const [selectedIngredientId, setSelectedIngredientId] = useState<number | null>(null);
+  const [usedIngredientIds, setUsedIngredientIds] = useState<number[]>([]);
+  const currentStep = instructionSteps[currentStepIndex];
+  const currentStepText = (currentStep?.segments || []).map((segment: any) => segment.text).join("") || "";
   const currentStepDurationMinutes = parseDurationFromStep(currentStepText);
 
   useEffect(() => {
@@ -157,7 +157,15 @@ export function RecipeView({
             <div className="rounded-2xl bg-secondary/30 p-3 sm:p-4 text-center space-y-2">
               <p className="text-xs sm:text-sm text-muted-foreground">Krok {Math.min(currentStepIndex + 1, instructionSteps.length)} / {instructionSteps.length || 1}</p>
               <p className="text-lg sm:text-2xl font-bold leading-snug">
-                {currentStepText || "Brak kroków. Dodaj instrukcje do przepisu."}
+                {(currentStep?.segments || []).length > 0 ? currentStep.segments.map((segment: any, idx: number) => (
+                  segment.type === "ingredient" ? (
+                    <button
+                      key={`${segment.ingredientId}-${idx}`}
+                      className="inline rounded-full bg-primary/10 text-primary px-2 py-0.5 mx-0.5"
+                      onClick={() => setSelectedIngredientId(Number(segment.ingredientId))}
+                    >{segment.text}</button>
+                  ) : <span key={`${segment.text}-${idx}`}>{segment.text}</span>
+                )) : "Brak kroków. Dodaj instrukcje do przepisu."}
               </p>
               {currentStepDurationMinutes > 0 && (
                 <p className="text-xs sm:text-sm text-muted-foreground">Wykryto timer: {currentStepDurationMinutes} min</p>
@@ -211,11 +219,30 @@ export function RecipeView({
                 const nextIndex = Math.min(currentStepIndex + 1, Math.max(instructionSteps.length - 1, 0));
                 setCurrentStepIndex(nextIndex);
                 setIsTimerRunning(false);
-                setTimerRemainingSeconds(parseDurationFromStep(instructionSteps[nextIndex] || "") * 60);
+                const nextStepText = (instructionSteps[nextIndex]?.segments || []).map((segment: any) => segment.text).join("");
+                setTimerRemainingSeconds(parseDurationFromStep(nextStepText || "") * 60);
               }}
             >
               Następny krok
             </Button>
+
+            {selectedIngredientId && (() => {
+              const ingredientData = baseIngredients.find((ri: any) => Number(ri.ingredientId) === Number(selectedIngredientId));
+              if (!ingredientData) return null;
+              return (
+                <div className="rounded-xl border p-3 text-xs bg-white">
+                  <p className="font-semibold">{ingredientData.ingredient?.name}</p>
+                  <p>Ilość: {Math.round(getScaledAmount(ingredientData))}{ingredientData.unit || "g"}</p>
+                  <p>Status: {usedIngredientIds.includes(selectedIngredientId) ? "użyty" : "nieużyty"}</p>
+                  <div className="flex gap-2 mt-2">
+                    <Button size="sm" variant="outline" onClick={() => setUsedIngredientIds((prev) => prev.includes(selectedIngredientId) ? prev.filter((id) => id !== selectedIngredientId) : [...prev, selectedIngredientId])}>
+                      Oznacz jako {usedIngredientIds.includes(selectedIngredientId) ? "nieużyty" : "użyty"}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedIngredientId(null)}>Zamknij</Button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         ) : (
         <div className="space-y-6">
@@ -350,8 +377,19 @@ export function RecipeView({
               <h3 className="text-lg font-bold mb-3">Instrukcje</h3>
               {instructionSteps.length > 0 ? (
                 <ol className="list-decimal pl-5 space-y-1 text-muted-foreground leading-relaxed">
-                  {instructionSteps.map((step: string, idx: number) => (
-                    <li key={`${step}-${idx}`}>{step}</li>
+                  {instructionSteps.map((step: InstructionStep, idx: number) => (
+                    <li key={`step-${idx}`}>
+                      {step.segments.map((segment: any, segmentIdx: number) => (
+                        segment.type === "ingredient" ? (
+                          <button
+                            type="button"
+                            key={`${segment.ingredientId}-${segmentIdx}`}
+                            className="inline rounded-full bg-primary/10 text-primary px-2 py-0.5 mx-0.5"
+                            onClick={() => setSelectedIngredientId(Number(segment.ingredientId))}
+                          >{segment.text}</button>
+                        ) : <span key={`${segment.text}-${segmentIdx}`}>{segment.text}</span>
+                      ))}
+                    </li>
                   ))}
                 </ol>
               ) : (
@@ -360,7 +398,8 @@ export function RecipeView({
               {instructionSteps.length > 0 && (
                 <Button className="mt-4" onClick={() => {
                   setCurrentStepIndex(0);
-                  setTimerRemainingSeconds(parseDurationFromStep(instructionSteps[0]) * 60);
+                  const firstStepText = (instructionSteps[0]?.segments || []).map((segment: any) => segment.text).join("");
+                  setTimerRemainingSeconds(parseDurationFromStep(firstStepText) * 60);
                   setIsTimerRunning(false);
                   setIsCookingMode(true);
                 }}>
