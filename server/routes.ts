@@ -211,6 +211,7 @@ export async function registerRoutes(
         instructions: z.string().optional(),
         prepTime: z.number().optional(),
         imageUrl: z.string().optional(),
+        isFavorite: z.boolean().optional().default(false),
         servings: z.number().min(0.1).default(1),
         ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
@@ -239,6 +240,7 @@ export async function registerRoutes(
         instructions: z.string().optional(),
         prepTime: z.number().optional(),
         imageUrl: z.string().optional(),
+        isFavorite: z.boolean().optional(),
         servings: z.number().min(0.1).optional(),
         ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
