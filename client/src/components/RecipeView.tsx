@@ -4,6 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Clock, ChefHat, CalendarPlus, Settings2, Play, Pause, RotateCcw, ChefHatIcon } from "lucide-react";
 import { calculateScaledAmount } from "@shared/scaling";
 
+const parseDurationFromStep = (step: string) => {
+  const explicitTimer = step.match(/\[timer\s*:\s*(\d+)\]/i);
+  if (explicitTimer) return Number(explicitTimer[1]);
+
+  const naturalLanguage = step.match(/(\d+)\s*(min|minut|minuty|minute|minutes)/i);
+  return naturalLanguage ? Number(naturalLanguage[1]) : 0;
+};
+
 interface RecipeViewProps {
   recipe: any;
   isOpen: boolean;
@@ -32,14 +40,6 @@ export function RecipeView({
   const [timerRemainingSeconds, setTimerRemainingSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  const parseDurationFromStep = (step: string) => {
-    const explicitTimer = step.match(/\[timer\s*:\s*(\d+)\]/i);
-    if (explicitTimer) return Number(explicitTimer[1]);
-
-    const naturalLanguage = step.match(/(\d+)\s*(min|minut|minuty|minute|minutes)/i);
-    return naturalLanguage ? Number(naturalLanguage[1]) : 0;
-  };
-
   const instructionSteps = useMemo(() => {
     if (!recipe?.instructions) return [];
 
@@ -49,24 +49,6 @@ export function RecipeView({
       .filter(Boolean)
       .map((line: string) => line.replace(/^\d+[.)]\s*/, ""));
   }, [recipe?.instructions]);
-
-  const parseDurationFromStep = (step: string) => {
-    const explicitTimer = step.match(/\[timer\s*:\s*(\d+)\]/i);
-    if (explicitTimer) return Number(explicitTimer[1]);
-
-    const naturalLanguage = step.match(/(\d+)\s*(min|minut|minuty|minute|minutes)/i);
-    return naturalLanguage ? Number(naturalLanguage[1]) : 0;
-  };
-
-  const instructionSteps = useMemo(() => {
-    if (!recipe.instructions) return [];
-
-    return recipe.instructions
-      .split(/\n+/)
-      .map((line: string) => line.trim())
-      .filter(Boolean)
-      .map((line: string) => line.replace(/^\d+[.)]\s*/, ""));
-  }, [recipe.instructions]);
 
   const isPlannedView = plannedServings !== undefined;
   const recipeServings = Number(recipe?.servings) || 1;
