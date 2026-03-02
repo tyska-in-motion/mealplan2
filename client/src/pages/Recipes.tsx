@@ -218,7 +218,7 @@ export default function Recipes() {
         setIsAddToPlanOpen(false);
         setRecipeToPlan(null);
         setSelectedFrequentAddons([]);
-        toast({ title: "Sukces", description: "Przepis dodany do planu dla Osoby A i B." });
+        toast({ title: "Sukces", description: "Przepis dodany do planu dla Tysi i Matiego." });
       })
       .catch((err: any) => {
         toast({ variant: "destructive", title: "Błąd", description: err?.message || "Nie udało się dodać przepisu." });

@@ -70,6 +70,7 @@ export default function MealPlan() {
   const [ingredientAmount, setIngredientAmount] = useState(100);
   const [copySourceDate, setCopySourceDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [copyTargetDate, setCopyTargetDate] = useState(format(addDays(new Date(), 1), "yyyy-MM-dd"));
+  const personName: Record<"A" | "B", string> = { A: "Tysia", B: "Mati" };
 
   const frequentAddonDefinitions = viewingRecipe?.frequentAddons || [];
   const frequentAddonIngredientIds = useMemo(() => new Set(
@@ -636,16 +637,16 @@ export default function MealPlan() {
           setIsAddOpen(true);
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto sm:max-h-[90vh] max-sm:h-[100dvh] max-sm:max-h-none">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto sm:max-h-[90vh] max-sm:h-[100dvh] max-sm:max-h-none max-sm:p-4">
           <DialogHeader>
             <DialogTitle>Dodaj do posiłku: {
               selectedMealType === "breakfast" ? "Śniadanie" : 
               selectedMealType === "lunch" ? "Obiad" : 
               selectedMealType === "dinner" ? "Kolacja" : "Przekąska"
-            } ({selectedDateStr}) • Osoba {selectedPerson}</DialogTitle>
+            } ({selectedDateStr}) • {personName[selectedPerson]}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 mt-4">
+          <div className="space-y-4 mt-2 sm:mt-4">
             <div className="flex flex-col gap-3">
               <input
                 type="text"
@@ -680,7 +681,7 @@ export default function MealPlan() {
               )}
             </div>
 
-            <div className="grid gap-2 max-h-[50vh] overflow-y-auto pr-2">
+            <div className="grid gap-2 max-h-[50vh] overflow-y-auto pr-0 sm:pr-2">
               {filteredRecipes.length > 0 ? (
                 filteredRecipes.map((recipe: any) => (
                   <button
@@ -691,11 +692,11 @@ export default function MealPlan() {
                     }}
                     className="flex items-center gap-4 p-3 rounded-xl hover:bg-secondary transition-colors text-left border border-transparent hover:border-border"
                   >
-                    <div className="w-12 h-12 rounded-lg bg-cover bg-center bg-muted flex-shrink-0" style={{ backgroundImage: `url(${recipe.imageUrl})` }} />
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-cover bg-center bg-muted flex-shrink-0" style={{ backgroundImage: `url(${recipe.imageUrl})` }} />
                     <div className="min-w-0">
                       <p className="font-semibold truncate">{recipe.name}</p>
                       <div className="flex items-center gap-2">
-                        <p className="text-xs text-muted-foreground">{recipe.prepTime} min</p>
+                        <p className="text-[11px] text-muted-foreground">{recipe.prepTime} min</p>
                         {recipe.tags?.map((tag: string) => (
                           <span key={tag} className="text-[10px] bg-secondary px-1.5 py-0.5 rounded text-muted-foreground uppercase tracking-wider font-medium">
                             {tag}
@@ -787,13 +788,13 @@ export default function MealPlan() {
                               className="h-8 w-24"
                             />
 
-                            <span className="text-xs text-muted-foreground">g</span>
+                            <span className="text-[11px] text-muted-foreground">g</span>
 
                             <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => increaseAddonAmount(addon)}>
                               <Plus className="h-4 w-4" />
                             </Button>
 
-                            <span className="text-xs text-muted-foreground">x{Math.max(0, repeatCount)}</span>
+                            <span className="text-[11px] text-muted-foreground">x{Math.max(0, repeatCount)}</span>
 
                             {selectedAmount > 0 && (
                               <Button
@@ -826,9 +827,9 @@ export default function MealPlan() {
       </Dialog>
 
       <Dialog open={isCustomOpen} onOpenChange={setIsCustomOpen}>
-        <DialogContent className="max-sm:h-[100dvh] max-sm:max-h-none">
+        <DialogContent className="max-sm:h-[100dvh] max-sm:max-h-none max-sm:p-4">
           <DialogHeader>
-            <DialogTitle>Dodaj własny produkt • Osoba {selectedPerson}</DialogTitle>
+            <DialogTitle>Dodaj własny produkt • {personName[selectedPerson]}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleAddCustom} className="grid gap-4 mt-4">
             <div className="grid gap-2">
@@ -859,7 +860,7 @@ export default function MealPlan() {
       </Dialog>
 
       <Dialog open={isIngredientOpen} onOpenChange={setIsIngredientOpen}>
-        <DialogContent className="max-sm:h-[100dvh] max-sm:max-h-none">
+        <DialogContent className="max-sm:h-[100dvh] max-sm:max-h-none max-sm:p-4">
           <DialogHeader>
             <DialogTitle>Dodaj składnik do posiłku</DialogTitle>
           </DialogHeader>
@@ -1010,7 +1011,7 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
               <div key={person} className="rounded-2xl border border-border/60 bg-white/60 p-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-bold">{personName[person]}</span>
-                  <span className="text-xs text-muted-foreground">Koszt dnia: {personSummary[person].price.toFixed(2)} PLN</span>
+                  <span className="text-[11px] text-muted-foreground">Koszt dnia: {personSummary[person].price.toFixed(2)} PLN</span>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <div className="flex flex-col items-center bg-white px-3 py-1 rounded-xl border border-border shadow-sm min-w-[70px]">
@@ -1036,7 +1037,7 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
         )}
       </div>
 
-      {/* Stabilized render tree for person A/B meal plan layout */}
+      {/* Stabilized render tree for dual-person meal plan layout */}
       {isLoading ? <LoadingSpinner /> : (
         <div className="space-y-5">
           {people.map((person) => (
