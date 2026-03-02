@@ -58,12 +58,25 @@ export default function Ingredients() {
   const [editingIngredient, setEditingIngredient] = useState<any>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("alphabetical");
+  const [completenessFilter, setCompletenessFilter] = useState<string>("all");
 
   const categories = Array.from(new Set(ingredients?.map(i => i.category).filter(Boolean) || [])) as string[];
 
   const filteredIngredients = ingredients?.filter(item => {
-    if (selectedCategory === "all") return true;
-    return item.category === selectedCategory;
+    const categoryMatches = selectedCategory === "all" || item.category === selectedCategory;
+
+    const price = Number(item.price) || 0;
+    const unitWeight = Number(item.unitWeight) || 0;
+    const missingPrice = price <= 0;
+    const missingUnitWeight = unitWeight <= 0;
+
+    const completenessMatches =
+      completenessFilter === "all" ||
+      (completenessFilter === "missingPrice" && missingPrice) ||
+      (completenessFilter === "missingUnitWeight" && missingUnitWeight) ||
+      (completenessFilter === "missingAny" && (missingPrice || missingUnitWeight));
+
+    return categoryMatches && completenessMatches;
   }).sort((a, b) => {
     switch (sortBy) {
       case "alphabetical":
@@ -313,6 +326,19 @@ export default function Ingredients() {
               <SelectItem value="protein">Białko (max)</SelectItem>
               <SelectItem value="carbs">Węglowodany (max)</SelectItem>
               <SelectItem value="fat">Tłuszcze (max)</SelectItem>
+            </SelectContent>
+          </Select>
+
+
+          <Select value={completenessFilter} onValueChange={setCompletenessFilter}>
+            <SelectTrigger className="w-full sm:w-[220px] rounded-xl bg-white shadow-sm">
+              <SelectValue placeholder="Uzupełnienie danych" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Wszystkie składniki</SelectItem>
+              <SelectItem value="missingPrice">Bez ceny</SelectItem>
+              <SelectItem value="missingUnitWeight">Bez wagi sztuki</SelectItem>
+              <SelectItem value="missingAny">Bez ceny lub wagi sztuki</SelectItem>
             </SelectContent>
           </Select>
         </div>

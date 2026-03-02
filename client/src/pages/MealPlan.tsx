@@ -637,9 +637,9 @@ export default function MealPlan() {
           setIsAddOpen(true);
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto sm:max-h-[90vh] max-sm:h-[100dvh] max-sm:max-h-none max-sm:p-4">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto sm:max-h-[90vh] max-sm:h-[100dvh] max-sm:w-screen max-sm:max-h-none max-sm:max-w-none max-sm:overflow-x-hidden max-sm:p-3">
           <DialogHeader>
-            <DialogTitle>Dodaj do posiłku: {
+            <DialogTitle className="text-base sm:text-lg">Dodaj do posiłku: {
               selectedMealType === "breakfast" ? "Śniadanie" : 
               selectedMealType === "lunch" ? "Obiad" : 
               selectedMealType === "dinner" ? "Kolacja" : "Przekąska"
@@ -690,7 +690,7 @@ export default function MealPlan() {
                       setSelectedRecipeToAdd(recipe);
                       setSelectedFrequentAddons({});
                     }}
-                    className="flex items-center gap-4 p-3 rounded-xl hover:bg-secondary transition-colors text-left border border-transparent hover:border-border"
+                    className="flex items-center gap-2 sm:gap-4 p-2.5 sm:p-3 rounded-xl hover:bg-secondary transition-colors text-left border border-transparent hover:border-border"
                   >
                     <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-cover bg-center bg-muted flex-shrink-0" style={{ backgroundImage: `url(${recipe.imageUrl})` }} />
                     <div className="min-w-0">
@@ -776,7 +776,7 @@ export default function MealPlan() {
                               {addon.ingredient?.name || "Składnik"}
                             </span>
 
-                            <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => decreaseAddonAmount(addon)}>
+                            <Button type="button" variant="outline" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => decreaseAddonAmount(addon)}>
                               <Minus className="h-4 w-4" />
                             </Button>
 
@@ -785,7 +785,7 @@ export default function MealPlan() {
                               min={0}
                               value={selectedAmount}
                               onChange={(e) => setAddonAmount(addon.ingredientId, Number(e.target.value) || 0)}
-                              className="h-8 w-24"
+                              className="h-7 sm:h-8 w-20 sm:w-24 text-xs sm:text-sm"
                             />
 
                             <span className="text-[11px] text-muted-foreground">g</span>
@@ -801,7 +801,7 @@ export default function MealPlan() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="ml-auto h-8 w-8 text-muted-foreground"
+                                className="ml-auto h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground"
                                 onClick={() => setAddonAmount(addon.ingredientId, 0)}
                               >
                                 <X className="h-4 w-4" />
@@ -827,7 +827,7 @@ export default function MealPlan() {
       </Dialog>
 
       <Dialog open={isCustomOpen} onOpenChange={setIsCustomOpen}>
-        <DialogContent className="max-sm:h-[100dvh] max-sm:max-h-none max-sm:p-4">
+        <DialogContent className="max-sm:h-[100dvh] max-sm:w-screen max-sm:max-h-none max-sm:max-w-none max-sm:overflow-x-hidden max-sm:p-3">
           <DialogHeader>
             <DialogTitle>Dodaj własny produkt • {personName[selectedPerson]}</DialogTitle>
           </DialogHeader>
@@ -860,7 +860,7 @@ export default function MealPlan() {
       </Dialog>
 
       <Dialog open={isIngredientOpen} onOpenChange={setIsIngredientOpen}>
-        <DialogContent className="max-sm:h-[100dvh] max-sm:max-h-none max-sm:p-4">
+        <DialogContent className="max-sm:h-[100dvh] max-sm:w-screen max-sm:max-h-none max-sm:max-w-none max-sm:overflow-x-hidden max-sm:p-3">
           <DialogHeader>
             <DialogTitle>Dodaj składnik do posiłku</DialogTitle>
           </DialogHeader>
