@@ -3,7 +3,8 @@ import { Layout } from "@/components/Layout";
 import { format, addDays, startOfWeek, endOfWeek } from "date-fns";
 import { useShoppingList } from "@/hooks/use-meal-plan";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { Check, ShoppingCart, Calendar } from "lucide-react";
+import { Check, ShoppingCart, Calendar, FileDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { pl } from "date-fns/locale";
@@ -63,6 +64,55 @@ export default function ShoppingList() {
     }
   };
 
+  const handleExportPdf = () => {
+    const printWindow = window.open("", "_blank", "width=900,height=1200");
+    if (!printWindow) return;
+
+    const printDate = format(new Date(), "yyyy-MM-dd HH:mm");
+    const content = categories
+      .map((category) => {
+        const rows = groupedList[category]
+          .map((item: any) => {
+            const isChecked = checkedItems[item.ingredientId] ? "✓" : "☐";
+            return `<tr>
+              <td style="padding: 6px 8px; border-bottom: 1px solid #eee; width: 30px;">${isChecked}</td>
+              <td style="padding: 6px 8px; border-bottom: 1px solid #eee;">${item.name}</td>
+              <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right; white-space: nowrap;">${Math.round(item.totalAmount)} ${item.unit}</td>
+            </tr>`;
+          })
+          .join("");
+
+        return `
+          <section style="margin-bottom: 18px;">
+            <h2 style="font-size: 14px; text-transform: uppercase; color: #6b7280; margin: 0 0 8px;">${category}</h2>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tbody>${rows}</tbody>
+            </table>
+          </section>
+        `;
+      })
+      .join("");
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Lista zakupów ${startStr} - ${endStr}</title>
+        </head>
+        <body style="font-family: Inter, Arial, sans-serif; margin: 24px; color: #111827;">
+          <h1 style="margin-bottom: 4px;">Lista zakupów</h1>
+          <p style="margin-top: 0; color: #6b7280;">
+            Okres: ${format(range.start, "d MMMM yyyy", { locale: pl })} - ${format(range.end, "d MMMM yyyy", { locale: pl })}<br/>
+            Wygenerowano: ${printDate}
+          </p>
+          ${content || '<p>Brak produktów dla wybranego okresu.</p>'}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   return (
     <Layout>
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
@@ -90,6 +140,10 @@ export default function ShoppingList() {
               className="h-9 w-40 rounded-lg border-muted"
             />
           </div>
+          <Button onClick={handleExportPdf} className="h-9 rounded-lg px-3 text-xs font-semibold w-full sm:w-auto">
+            <FileDown className="w-4 h-4 mr-2" />
+            Eksportuj PDF
+          </Button>
         </div>
       </div>
 

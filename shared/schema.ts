@@ -19,6 +19,7 @@ export const ingredients = pgTable("ingredients", {
   unitDescription: text("unit_description"), // e.g. "1 sztuka to ok. 150g"
   price: real("price").default(0), // Price per 100g
   imageUrl: text("image_url"),
+  alwaysAtHome: boolean("always_at_home").notNull().default(false),
 });
 
 export const userSettings = pgTable("user_settings", {
