@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { useShoppingList } from "@/hooks/use-meal-plan";
@@ -10,6 +10,14 @@ import { Input } from "@/components/ui/input";
 import { pl } from "date-fns/locale";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+
+
+const roundToSingleDecimal = (value: number) => Math.round(value * 10) / 10;
+
+const formatAmount = (value: number) => {
+  const rounded = roundToSingleDecimal(value);
+  return rounded.toFixed(1);
+};
 
 export default function ShoppingList() {
   const [range, setRange] = useState({
@@ -80,7 +88,20 @@ export default function ShoppingList() {
   const activeItems = (list || []).filter((item: any) => !item.isExcluded);
   const excludedFromHomeItems = (list || []).filter((item: any) => !!item.isExcluded);
 
-  const groupedList = activeItems.reduce((acc: Record<string, any[]>, item: any) => {
+  const sortedActiveItems = useMemo(() => {
+    return [...activeItems].sort((a: any, b: any) => {
+      const aChecked = a.isExtra ? !!a.isChecked : !!checkedItems[a.ingredientId];
+      const bChecked = b.isExtra ? !!b.isChecked : !!checkedItems[b.ingredientId];
+
+      if (aChecked !== bChecked) {
+        return Number(aChecked) - Number(bChecked);
+      }
+
+      return a.name.localeCompare(b.name, "pl");
+    });
+  }, [activeItems, checkedItems]);
+
+  const groupedList = sortedActiveItems.reduce((acc: Record<string, any[]>, item: any) => {
     const category = item.category || "Inne";
     if (!acc[category]) acc[category] = [];
     acc[category].push(item);
@@ -140,7 +161,7 @@ export default function ShoppingList() {
             return `<tr>
               <td style="padding: 6px 8px; border-bottom: 1px solid #eee; width: 30px;">${isChecked}</td>
               <td style="padding: 6px 8px; border-bottom: 1px solid #eee;">${item.name}</td>
-              <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right; white-space: nowrap;">${Math.round(item.totalAmount)} ${item.unit}</td>
+              <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right; white-space: nowrap;">${formatAmount(item.totalAmount)} ${item.unit}</td>
             </tr>`;
           })
           .join("");
@@ -279,7 +300,7 @@ export default function ShoppingList() {
                           </div>
                           <div className="flex flex-col items-end gap-1">
                             <span className="text-sm font-mono text-muted-foreground bg-secondary px-2 py-1 rounded">
-                              {item.totalAmount % 1 === 0 ? Math.round(item.totalAmount) : item.totalAmount} {item.unit}
+                              {formatAmount(item.totalAmount)} {item.unit}
                             </span>
                             {Number(item.unitWeight || 0) > 0 && (
                               <span className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
@@ -340,7 +361,7 @@ export default function ShoppingList() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-mono text-muted-foreground bg-secondary px-2 py-1 rounded">
-                    {item.totalAmount % 1 === 0 ? Math.round(item.totalAmount) : item.totalAmount} {item.unit}
+                    {formatAmount(item.totalAmount)} {item.unit}
                   </span>
                   <Button
                     variant="outline"
