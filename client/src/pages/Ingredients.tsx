@@ -36,6 +36,7 @@ const createIngredientSchema = z.object({
   unitWeight: z.coerce.number().optional().or(z.literal(0)),
   unitDescription: z.string().optional().or(z.literal("")),
   imageUrl: z.string().optional().or(z.literal("")),
+  alwaysAtHome: z.boolean().optional().default(false),
 });
 
 export default function Ingredients() {
@@ -108,6 +109,7 @@ export default function Ingredients() {
       unitDescription: "",
       imageUrl: "",
       price: 0,
+      alwaysAtHome: false,
     },
   });
 
@@ -125,6 +127,7 @@ export default function Ingredients() {
       unitDescription: ingredient.unitDescription || "",
       price: ingredient.price || 0,
       imageUrl: ingredient.imageUrl || "",
+      alwaysAtHome: !!ingredient.alwaysAtHome,
     });
     setIsOpen(true);
   };
@@ -143,6 +146,7 @@ export default function Ingredients() {
       unitDescription: "",
       price: 0,
       imageUrl: "",
+      alwaysAtHome: false,
     });
   };
 
@@ -194,6 +198,10 @@ export default function Ingredients() {
                 <label className="text-sm font-medium">Kategoria</label>
                 <Input {...form.register("category")} placeholder="np. Mięso, Nabiał, Owoce" />
               </div>
+              <label className="inline-flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" {...form.register("alwaysAtHome")} />
+                Zawsze mam w domu
+              </label>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium">Kalorie (na 100g)</label>
@@ -359,6 +367,22 @@ export default function Ingredients() {
               <p className="text-xs text-muted-foreground mt-1">
                 {item.calories} kcal <span className="text-gray-300">|</span> P:{item.protein} C:{item.carbs} F:{item.fat} <span className="text-gray-300">|</span> {item.price} PLN
               </p>
+              <label
+                className="mt-2 inline-flex items-center gap-2 text-xs text-emerald-700 font-medium cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!item.alwaysAtHome}
+                  onChange={(e) => {
+                    updateIngredientMutation({ id: item.id, data: { alwaysAtHome: e.target.checked } }, {
+                      onSuccess: () => toast({ title: "Zapisano preferencję" }),
+                      onError: (err) => toast({ variant: "destructive", title: "Błąd", description: err.message }),
+                    });
+                  }}
+                />
+                Zawsze mam w domu
+              </label>
             </div>
             <div className="flex items-center gap-1">
               <button 

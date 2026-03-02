@@ -70,13 +70,15 @@ export default function Recipes() {
   const [search, setSearch] = useState("");
 
   const { data: recipes, isLoading } = useRecipes();
+  const { data: availableIngredients } = useIngredients();
   const { mutate: deleteRecipe } = useDeleteRecipe();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string>("all");
   const [favoriteFilter, setFavoriteFilter] = useState<"all" | "favorites">("all");
   const [sortBy, setSortBy] = useState<string>("frequency");
-  const [availableIngredientIds, setAvailableIngredientIds] = useState<number[]>([]);
+  const [manualAvailableIngredientIds, setManualAvailableIngredientIds] = useState<number[]>([]);
+  const [excludedDefaultIngredientIds, setExcludedDefaultIngredientIds] = useState<number[]>([]);
   const [cookingSteps, setCookingSteps] = useState<Array<{ text: string; timerMinutes?: number }>>([]);
 
   const parseInstructionsToSteps = (instructions?: string) => {
@@ -100,6 +102,36 @@ export default function Recipes() {
   function getIngredientAmount(ri: any) {
     return Number(ri?.baseAmount ?? ri?.amount ?? 0);
   }
+
+  const alwaysAtHomeIngredientIds = useMemo(() =>
+    (availableIngredients || [])
+      .filter((ingredient: any) => ingredient.alwaysAtHome)
+      .map((ingredient: any) => ingredient.id),
+    [availableIngredients]
+  );
+
+  const effectiveAvailableIngredientIds = useMemo(() => {
+    const defaults = alwaysAtHomeIngredientIds.filter((id) => !excludedDefaultIngredientIds.includes(id));
+    return Array.from(new Set([...defaults, ...manualAvailableIngredientIds]));
+  }, [alwaysAtHomeIngredientIds, excludedDefaultIngredientIds, manualAvailableIngredientIds]);
+
+  const toggleIngredientAvailability = (ingredientId: number, checked: boolean, isAlwaysAtHome: boolean) => {
+    if (isAlwaysAtHome) {
+      setExcludedDefaultIngredientIds((prev) =>
+        checked ? prev.filter((id) => id !== ingredientId) : Array.from(new Set([...prev, ingredientId]))
+      );
+      return;
+    }
+
+    setManualAvailableIngredientIds((prev) =>
+      checked ? Array.from(new Set([...prev, ingredientId])) : prev.filter((id) => id !== ingredientId)
+    );
+  };
+
+  const resetIngredientSelection = () => {
+    setManualAvailableIngredientIds([]);
+    setExcludedDefaultIngredientIds([]);
+  };
 
   const sortedAndFilteredRecipes = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -132,7 +164,7 @@ export default function Recipes() {
           const ingredients = recipe.ingredients || [];
           if (ingredients.length === 0) return 0;
           const matchingIngredients = ingredients.filter((ri: any) =>
-            availableIngredientIds.includes(Number(ri.ingredientId))
+            effectiveAvailableIngredientIds.includes(Number(ri.ingredientId))
           ).length;
           return matchingIngredients / ingredients.length;
         };
@@ -163,7 +195,7 @@ export default function Recipes() {
         return 0;
     }
   });
-  }, [recipes, search, selectedTag, favoriteFilter, sortBy, availableIngredientIds]);
+  }, [recipes, search, selectedTag, favoriteFilter, sortBy, effectiveAvailableIngredientIds]);
 
   // New state for "Add to Meal Plan"
   const [isAddToPlanOpen, setIsAddToPlanOpen] = useState(false);
@@ -263,8 +295,6 @@ export default function Recipes() {
   });
 
   // Form setup
-  const { data: availableIngredients } = useIngredients();
-
   const form = useForm<RecipeFormData>({
     resolver: zodResolver(createRecipeSchema),
     defaultValues: {
@@ -815,8 +845,8 @@ export default function Recipes() {
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-full sm:w-[240px] h-[52px] rounded-2xl bg-white shadow-sm border-border justify-between">
                 <span className="truncate">
-                  {availableIngredientIds.length > 0
-                    ? `Mam w domu: ${availableIngredientIds.length}`
+                  {effectiveAvailableIngredientIds.length > 0
+                    ? `Mam w domu: ${effectiveAvailableIngredientIds.length}`
                     : "Zaznacz co masz w domu"}
                 </span>
                 <ChevronsUpDown className="h-4 w-4 opacity-50" />
@@ -829,24 +859,34 @@ export default function Recipes() {
                   <CommandEmpty>Brak składników.</CommandEmpty>
                   <CommandGroup>
                     {(availableIngredients || []).map((ingredient: any) => {
-                      const checked = availableIngredientIds.includes(ingredient.id);
+                      const isAlwaysAtHome = !!ingredient.alwaysAtHome;
+                      const checked = effectiveAvailableIngredientIds.includes(ingredient.id);
                       return (
                         <CommandItem
                           key={ingredient.id}
                           value={ingredient.name}
                           onSelect={() => {
-                            setAvailableIngredientIds((prev) =>
-                              checked ? prev.filter((id) => id !== ingredient.id) : [...prev, ingredient.id]
-                            );
+                            toggleIngredientAvailability(ingredient.id, !checked, isAlwaysAtHome);
                           }}
                         >
                           <Check className={cn("mr-2 h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
-                          {ingredient.name}
+                          <span className="flex-1">{ingredient.name}</span>
+                          {isAlwaysAtHome && <span className="text-[10px] text-emerald-700">domyślnie</span>}
                         </CommandItem>
                       );
                     })}
                   </CommandGroup>
                 </CommandList>
+                <div className="border-t p-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-center text-xs"
+                    onClick={resetIngredientSelection}
+                  >
+                    Resetuj wybór (tylko "zawsze mam w domu")
+                  </Button>
+                </div>
               </Command>
             </PopoverContent>
           </Popover>
@@ -1011,7 +1051,7 @@ export default function Recipes() {
                 {(() => {
                   const totalIngredients = (recipe.ingredients || []).length;
                   const matchingIngredients = (recipe.ingredients || []).filter((ri: any) =>
-                    availableIngredientIds.includes(Number(ri.ingredientId))
+                    effectiveAvailableIngredientIds.includes(Number(ri.ingredientId))
                   ).length;
                   const matchScore = totalIngredients === 0 ? 0 : matchingIngredients / totalIngredients;
                   return (
