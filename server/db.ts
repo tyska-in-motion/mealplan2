@@ -14,6 +14,12 @@ export const db = drizzle(pool, { schema });
 
 
 export async function ensureDbCompat() {
+  // Backward-compatible self-healing for ingredients migration
+  await pool.query(`ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS always_at_home boolean DEFAULT false`);
+  await pool.query(`UPDATE ingredients SET always_at_home = false WHERE always_at_home IS NULL`);
+  await pool.query(`ALTER TABLE ingredients ALTER COLUMN always_at_home SET NOT NULL`);
+  await pool.query(`ALTER TABLE ingredients ALTER COLUMN always_at_home SET DEFAULT false`);
+
   await pool.query(`ALTER TABLE meal_entries ADD COLUMN IF NOT EXISTS person text DEFAULT 'A'`);
   await pool.query(`UPDATE meal_entries SET person = 'A' WHERE person IS NULL`);
   await pool.query(`ALTER TABLE meal_entries ALTER COLUMN person SET NOT NULL`);
