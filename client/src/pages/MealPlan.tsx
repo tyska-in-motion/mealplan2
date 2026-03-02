@@ -416,13 +416,13 @@ export default function MealPlan() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Plan Tygodniowy</h1>
-        <div className="flex items-center gap-4 bg-white p-2 rounded-xl border border-border shadow-sm">
+        <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white p-2 shadow-sm sm:w-auto sm:justify-start sm:gap-4">
           <button onClick={() => setBaseDate(d => subDays(d, 7))} className="p-2 hover:bg-muted rounded-lg transition-colors">
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <span className="font-semibold w-48 text-center tabular-nums">
+          <span className="min-w-0 flex-1 text-center text-sm font-semibold tabular-nums sm:w-48 sm:flex-none sm:text-base">
             {format(weekDays[0], "d MMM", { locale: pl })} - {format(weekDays[6], "d MMM, yyyy", { locale: pl })}
           </span>
           <button onClick={() => setBaseDate(d => addDays(d, 7))} className="p-2 hover:bg-muted rounded-lg transition-colors">
@@ -998,7 +998,7 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
   return (
     <div className={cn("space-y-6", isToday && "bg-primary/5 -mx-4 px-4 py-8 rounded-3xl border border-primary/10")}>
       <div className="flex flex-col md:flex-row md:items-baseline gap-4 mb-4">
-        <div className="flex items-baseline gap-4">
+        <div className="flex flex-wrap items-baseline gap-2 sm:gap-4">
           <h2 className="text-2xl font-bold font-display">{format(day, "EEEE", { locale: pl })}</h2>
           <span className="text-muted-foreground">{format(day, "d MMMM", { locale: pl })}</span>
           {isToday && <span className="text-xs font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-1 rounded-full">Dzisiaj</span>}

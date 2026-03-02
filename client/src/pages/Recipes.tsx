@@ -6,7 +6,7 @@ import { useAddMealEntry, useDayPlan } from "@/hooks/use-meal-plan";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Search, Clock, Trash2, ChefHat, X, Eye, Edit2, CalendarPlus, Check, ChevronsUpDown } from "lucide-react";
+import { Plus, Search, Clock, Trash2, ChefHat, X, Eye, Edit2, CalendarPlus, Check, ChevronsUpDown, Heart } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { useToast } from "@/hooks/use-toast";
@@ -74,6 +74,7 @@ export default function Recipes() {
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string>("all");
+  const [favoriteFilter, setFavoriteFilter] = useState<"all" | "favorites">("all");
   const [sortBy, setSortBy] = useState<string>("frequency");
 
   const allTags = Array.from(new Set(recipes?.flatMap(r => r.tags || []) || [])) as string[];
@@ -89,6 +90,9 @@ export default function Recipes() {
       .filter((recipe) => {
         const matchesTag = selectedTag === "all" || recipe.tags?.includes(selectedTag);
         if (!matchesTag) return false;
+
+        const matchesFavorite = favoriteFilter === "all" || !!recipe.isFavorite;
+        if (!matchesFavorite) return false;
 
         if (!normalizedSearch) return true;
 
@@ -130,7 +134,7 @@ export default function Recipes() {
         return 0;
     }
   });
-  }, [recipes, search, selectedTag, sortBy]);
+  }, [recipes, search, selectedTag, favoriteFilter, sortBy]);
 
   // New state for "Add to Meal Plan"
   const [isAddToPlanOpen, setIsAddToPlanOpen] = useState(false);
@@ -340,6 +344,41 @@ export default function Recipes() {
 
   const { mutate: createRecipeMutation, isPending: isCreating } = useCreateRecipe();
   const { mutate: updateRecipeMutation, isPending: isUpdating } = useUpdateRecipe();
+
+  const toggleRecipeFavorite = (recipe: any) => {
+    const payload = {
+      name: recipe.name,
+      tags: recipe.tags || [],
+      description: recipe.description || "",
+      instructions: recipe.instructions || "",
+      prepTime: recipe.prepTime || 0,
+      imageUrl: recipe.imageUrl || "",
+      servings: Number(recipe.servings) || 1,
+      isFavorite: !recipe.isFavorite,
+      ingredients: (recipe.ingredients || []).map((ri: any) => ({
+        ingredientId: ri.ingredientId,
+        amount: Number(ri.baseAmount ?? ri.amount ?? 0),
+        baseAmount: Number(ri.baseAmount ?? ri.amount ?? 0),
+        unit: ri.unit || ri.ingredient?.unit || "g",
+        scalingType: (ri.scalingType || "LINEAR") as ScalingType,
+        scalingFormula: ri.scalingType === "FORMULA" ? ri.scalingFormula : undefined,
+        stepThresholds: ri.scalingType === "STEP" ? (ri.stepThresholds || []) : undefined,
+      })),
+      frequentAddons: (recipe.frequentAddons || []).map((addon: any) => ({
+        ingredientId: addon.ingredientId,
+        amount: Number(addon.amount) || 0,
+      })),
+    };
+
+    updateRecipeMutation({ id: recipe.id, data: payload }, {
+      onSuccess: () => {
+        toast({ title: "Zapisano", description: payload.isFavorite ? "Dodano do ulubionych" : "Usunięto z ulubionych" });
+      },
+      onError: (err: any) => {
+        toast({ variant: "destructive", title: "Błąd", description: err.message });
+      },
+    });
+  };
 
   const onSubmit = (data: any) => {
     const normalizedData = {
@@ -710,6 +749,16 @@ export default function Recipes() {
             </SelectContent>
           </Select>
           
+          <Select value={favoriteFilter} onValueChange={(value: "all" | "favorites") => setFavoriteFilter(value)}>
+            <SelectTrigger className="w-full sm:w-[180px] h-[52px] rounded-2xl bg-white shadow-sm border-border">
+              <SelectValue placeholder="Ulubione" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Wszystkie</SelectItem>
+              <SelectItem value="favorites">Tylko ulubione</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Select value={sortBy} onValueChange={setSortBy}>
             <SelectTrigger className="w-full sm:w-[180px] h-[52px] rounded-2xl bg-white shadow-sm border-border">
               <SelectValue placeholder="Sortuj według" />
@@ -806,7 +855,15 @@ export default function Recipes() {
                     ))}
                   </div>
                 </div>
-                <div className="flex flex-col items-end">
+                <div className="flex flex-col items-end gap-1">
+                            <button
+                              type="button"
+                              className={cn("rounded-full p-1 transition-colors", recipe.isFavorite ? "text-rose-500 bg-rose-50" : "text-muted-foreground hover:text-rose-500 hover:bg-rose-50")}
+                              onClick={() => toggleRecipeFavorite(recipe)}
+                              title={recipe.isFavorite ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
+                            >
+                              <Heart className={cn("w-4 h-4", recipe.isFavorite && "fill-current")} />
+                            </button>
                             <div className="flex items-center gap-1 text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded-full mb-1">
                               <Clock className="w-3 h-3" />
                               {recipe.prepTime}m
