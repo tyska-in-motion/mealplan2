@@ -42,7 +42,7 @@ export default function Dashboard() {
   const [quickCustomProtein, setQuickCustomProtein] = useState<number>(25);
   const [quickCustomCarbs, setQuickCustomCarbs] = useState<number>(45);
   const [quickCustomFat, setQuickCustomFat] = useState<number>(15);
-  const [servingInputs, setServingInputs] = useState<Record<number, string>>({});
+  const [servingInputs, setServingInputs] = useState<Record<string, string>>({});
   const [targetsByPerson, setTargetsByPerson] = useState<Record<"A" | "B", PersonTargets>>({
     A: { calories: 1850, protein: 120, carbs: 205, fat: 61 },
     B: { calories: 2700, protein: 170, carbs: 302, fat: 90 },
@@ -273,6 +273,9 @@ export default function Dashboard() {
     }
   };
 
+
+  const getServingInputKey = (entry: any) => `${entry.id}-${entry.person || "A"}`;
+
   const updateServingsQuick = (entry: any, nextServings: number) => {
     const parsed = Number(nextServings);
     if (!parsed || parsed <= 0) return;
@@ -282,18 +285,22 @@ export default function Dashboard() {
       updates: {
         servings: parsed,
         isEaten: !!entry.isEaten,
+        person: entry.person || "A",
+        date: entry.date,
+        mealType: entry.mealType,
       },
     });
   };
 
   const applyServingInput = (entry: any) => {
-    const rawValue = servingInputs[entry.id];
+    const inputKey = getServingInputKey(entry);
+    const rawValue = servingInputs[inputKey];
     if (rawValue === undefined) return;
     const parsed = Number(rawValue.replace(",", "."));
     if (!parsed || parsed <= 0) {
       setServingInputs((prev) => {
         const next = { ...prev };
-        delete next[entry.id];
+        delete next[inputKey];
         return next;
       });
       return;
@@ -303,7 +310,7 @@ export default function Dashboard() {
     updateServingsQuick(entry, rounded);
     setServingInputs((prev) => {
       const next = { ...prev };
-      delete next[entry.id];
+      delete next[inputKey];
       return next;
     });
   };
@@ -676,8 +683,8 @@ export default function Dashboard() {
                                   min={0.5}
                                   step={0.5}
                                   className="h-6 w-12 sm:w-14 text-[11px] font-semibold px-1 py-0 text-center"
-                                  value={servingInputs[meal.id] ?? String(Number(meal.servings) || 1)}
-                                  onChange={(e) => setServingInputs((prev) => ({ ...prev, [meal.id]: e.target.value }))}
+                                  value={servingInputs[getServingInputKey(meal)] ?? String(Number(meal.servings) || 1)}
+                                  onChange={(e) => setServingInputs((prev) => ({ ...prev, [getServingInputKey(meal)]: e.target.value }))}
                                   onBlur={() => applyServingInput(meal)}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") {

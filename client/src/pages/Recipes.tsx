@@ -394,11 +394,11 @@ export default function Recipes() {
               <Plus className="w-5 h-5" /> Stwórz przepis
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto px-3 py-4 sm:max-h-[90vh] sm:px-6 sm:py-6 max-sm:h-[100dvh] max-sm:max-h-none">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto px-2 py-3 sm:max-h-[90vh] sm:px-6 sm:py-6 max-sm:h-[92dvh] max-sm:w-[95vw] max-sm:max-w-[95vw]">
             <DialogHeader>
               <DialogTitle className="text-lg sm:text-2xl font-display">{editingRecipe ? "Edytuj przepis" : "Nowy przepis"}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 sm:space-y-6 mt-2 sm:mt-4 text-sm">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 sm:space-y-6 mt-2 sm:mt-4 text-xs sm:text-sm">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div className="col-span-2">
                   <label className="text-sm font-medium mb-1 block">Nazwa przepisu</label>
@@ -480,7 +480,7 @@ export default function Recipes() {
                     const selectedId = Number(form.watch(`ingredients.${index}.ingredientId`));
                     return (
                       <div key={field.id} className="bg-secondary/20 p-2 rounded-xl border border-border/50">
-                        <div className="flex gap-2 items-end">
+                        <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                           <div className="flex-1">
                             <Popover>
                               <PopoverTrigger asChild>
@@ -535,13 +535,13 @@ export default function Recipes() {
                               </PopoverContent>
                             </Popover>
                           </div>
-                          <div className="w-24">
+                          <div className="w-full sm:w-24">
                             <Input type="number" placeholder="Bazowa" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.baseAmount` as const)} />
                           </div>
-                          <div className="w-24">
+                          <div className="w-full sm:w-24">
                             <Input placeholder="Jedn." className="h-9 rounded-lg" {...form.register(`ingredients.${index}.unit` as const)} />
                           </div>
-                          <div className="w-36">
+                          <div className="w-full sm:w-36">
                             <Select
                               value={form.watch(`ingredients.${index}.scalingType`) || "LINEAR"}
                               onValueChange={(value) => form.setValue(`ingredients.${index}.scalingType`, value as any)}
@@ -555,7 +555,7 @@ export default function Recipes() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-red-50 hover:text-red-500" onClick={() => remove(index)}>
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg hover:bg-red-50 hover:text-red-500 self-end" onClick={() => remove(index)}>
                             <X className="w-4 h-4" />
                           </Button>
                         </div>
@@ -587,7 +587,7 @@ export default function Recipes() {
                     );
                   })}
                 </div>
-                <Button type="button" variant="outline" size="sm" className="rounded-lg border-dashed w-full py-5 border-2 hover:bg-primary/5 hover:border-primary/50 transition-all" onClick={() => append({ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] })}>
+                <Button type="button" variant="outline" size="sm" className="rounded-lg border-dashed w-full py-3 sm:py-5 border-2 hover:bg-primary/5 hover:border-primary/50 transition-all text-xs sm:text-sm" onClick={() => append({ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] })}>
                   + Dodaj kolejny składnik
                 </Button>
                 {form.formState.errors.ingredients && <p className="text-red-500 text-xs mt-1">{form.formState.errors.ingredients.message}</p>}
@@ -601,7 +601,7 @@ export default function Recipes() {
                                     {frequentAddonFields.map((field, index) => {
                     const selectedId = Number(form.watch(`frequentAddons.${index}.ingredientId`));
                     return (
-                      <div key={field.id} className="flex gap-2 items-end bg-emerald-50/60 p-2 rounded-xl border border-emerald-100">
+                      <div key={field.id} className="flex flex-col sm:flex-row gap-2 sm:items-end bg-emerald-50/60 p-2 rounded-xl border border-emerald-100">
                         <div className="flex-1">
                           <Popover>
                             <PopoverTrigger asChild>
@@ -651,17 +651,17 @@ export default function Recipes() {
                             </PopoverContent>
                           </Popover>
                         </div>
-                        <div className="w-24">
+                        <div className="w-full sm:w-24">
                           <Input type="number" placeholder="g" className="h-9 rounded-lg" {...form.register(`frequentAddons.${index}.amount` as const)} />
                         </div>
-                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-lg hover:bg-red-50 hover:text-red-500" onClick={() => removeFrequentAddon(index)}>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg hover:bg-red-50 hover:text-red-500 self-end" onClick={() => removeFrequentAddon(index)}>
                           <X className="w-4 h-4" />
                         </Button>
                       </div>
                     );
                   })}
                 </div>
-                <Button type="button" variant="outline" size="sm" className="rounded-lg border-dashed w-full py-5 border-2 hover:bg-emerald-50 hover:border-emerald-300 transition-all" onClick={() => appendFrequentAddon({ ingredientId: 0, amount: 50 })}>
+                <Button type="button" variant="outline" size="sm" className="rounded-lg border-dashed w-full py-3 sm:py-5 border-2 hover:bg-emerald-50 hover:border-emerald-300 transition-all text-xs sm:text-sm" onClick={() => appendFrequentAddon({ ingredientId: 0, amount: 50 })}>
                   + Dodaj najczęsty dodatek
                 </Button>
               </div>
@@ -675,7 +675,7 @@ export default function Recipes() {
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-4">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 sm:pt-4">
                 <Button type="button" variant="ghost" onClick={() => setIsOpen(false)}>Anuluj</Button>
                 <Button type="submit" disabled={isCreating || isUpdating}>
                   {isCreating || isUpdating ? "Zapisywanie..." : "Zapisz przepis"}
