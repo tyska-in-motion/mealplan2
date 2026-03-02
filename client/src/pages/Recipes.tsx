@@ -394,12 +394,12 @@ export default function Recipes() {
               <Plus className="w-5 h-5" /> Stwórz przepis
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto sm:max-h-[90vh] max-sm:h-[100dvh] max-sm:max-h-none">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto px-3 py-4 sm:max-h-[90vh] sm:px-6 sm:py-6 max-sm:h-[100dvh] max-sm:max-h-none">
             <DialogHeader>
-              <DialogTitle className="text-2xl font-display">{editingRecipe ? "Edytuj przepis" : "Nowy przepis"}</DialogTitle>
+              <DialogTitle className="text-lg sm:text-2xl font-display">{editingRecipe ? "Edytuj przepis" : "Nowy przepis"}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-4">
-              <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 sm:space-y-6 mt-2 sm:mt-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div className="col-span-2">
                   <label className="text-sm font-medium mb-1 block">Nazwa przepisu</label>
                   <Input {...form.register("name")} placeholder="np. Tosty z awokado" />
@@ -882,9 +882,9 @@ export default function Recipes() {
           }
         }}
       >
-        <DialogContent className="max-sm:h-[100dvh] max-sm:max-h-none">
+        <DialogContent className="max-sm:h-[100dvh] max-sm:max-h-none px-3 py-4 sm:px-6 sm:py-6">
           <DialogHeader>
-            <DialogTitle>Dodaj do planu: {recipeToPlan?.name}</DialogTitle>
+            <DialogTitle className="text-base sm:text-lg">Dodaj do planu: {recipeToPlan?.name}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
