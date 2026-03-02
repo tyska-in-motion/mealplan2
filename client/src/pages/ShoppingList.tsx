@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
-import { format, addDays, startOfWeek, endOfWeek } from "date-fns";
+import { format, startOfWeek, endOfWeek } from "date-fns";
 import { useShoppingList } from "@/hooks/use-meal-plan";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { Check, ShoppingCart, Calendar, FileDown } from "lucide-react";
+import { Check, ShoppingCart, Calendar, FileDown, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,10 @@ export default function ShoppingList() {
     end: endOfWeek(new Date(), { weekStartsOn: 1 })
   });
 
+  const [extraName, setExtraName] = useState("");
+  const [extraAmount, setExtraAmount] = useState("1");
+  const [extraUnit, setExtraUnit] = useState("szt");
+
   const startStr = format(range.start, "yyyy-MM-dd");
   const endStr = format(range.end, "yyyy-MM-dd");
 
@@ -25,6 +29,11 @@ export default function ShoppingList() {
   const { data: checkedItems = {} } = useQuery<Record<number, boolean>>({
     queryKey: ["/api/shopping-list/checks"],
     refetchInterval: 3000, // Poll every 3 seconds for multi-device sync
+  });
+
+  const { data: excludedItems = [] } = useQuery<number[]>({
+    queryKey: ["/api/shopping-list/exclusions"],
+    refetchInterval: 5000,
   });
 
   const toggleMutation = useMutation({
@@ -36,7 +45,42 @@ export default function ShoppingList() {
     }
   });
 
-  const groupedList = (list || []).reduce((acc: Record<string, any[]>, item: any) => {
+
+  const addExtraMutation = useMutation({
+    mutationFn: async ({ name, amount, unit }: { name: string; amount: number; unit: string }) => {
+      await apiRequest("POST", "/api/shopping-list/extras", { name, amount, unit });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
+      setExtraName("");
+      setExtraAmount("1");
+      setExtraUnit("szt");
+    }
+  });
+
+  const deleteExtraMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/shopping-list/extras/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
+    }
+  });
+
+  const toggleExclusionMutation = useMutation({
+    mutationFn: async ({ ingredientId, excluded }: { ingredientId: number; excluded: boolean }) => {
+      await apiRequest("POST", "/api/shopping-list/exclusions", { ingredientId, excluded });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/exclusions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
+    }
+  });
+
+  const activeItems = (list || []).filter((item: any) => !item.isExcluded);
+  const excludedFromHomeItems = (list || []).filter((item: any) => !!item.isExcluded);
+
+  const groupedList = activeItems.reduce((acc: Record<string, any[]>, item: any) => {
     const category = item.category || "Inne";
     if (!acc[category]) acc[category] = [];
     acc[category].push(item);
@@ -45,9 +89,17 @@ export default function ShoppingList() {
 
   const categories = Object.keys(groupedList).sort();
 
-  const toggleCheck = (id: number) => {
-    const currentStatus = !!checkedItems[id];
-    toggleMutation.mutate({ id, checked: !currentStatus });
+  const toggleCheck = (item: any) => {
+    if (item.isExtra) {
+      const currentStatus = !!item.isChecked;
+      apiRequest("PATCH", `/api/shopping-list/extras/${item.extraId}`, { isChecked: !currentStatus }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
+      });
+      return;
+    }
+
+    const currentStatus = !!checkedItems[item.ingredientId];
+    toggleMutation.mutate({ id: item.ingredientId, checked: !currentStatus });
   };
 
   const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,6 +114,17 @@ export default function ShoppingList() {
     if (!isNaN(newDate.getTime())) {
       setRange(prev => ({ ...prev, end: newDate }));
     }
+  };
+
+  const handleAddExtra = () => {
+    const trimmed = extraName.trim();
+    if (!trimmed) return;
+    const parsedAmount = Number(extraAmount);
+    addExtraMutation.mutate({
+      name: trimmed,
+      amount: Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 1,
+      unit: extraUnit.trim() || "szt",
+    });
   };
 
   const handleExportPdf = () => {
@@ -156,6 +219,19 @@ export default function ShoppingList() {
         </span>
       </div>
 
+
+      <div className="mb-6 p-4 bg-white rounded-2xl border border-border shadow-sm space-y-3">
+        <p className="text-sm font-semibold">Dodaj własny produkt (np. worki na śmieci, płyn do naczyń)</p>
+        <div className="flex flex-col md:flex-row gap-2">
+          <Input value={extraName} onChange={(e) => setExtraName(e.target.value)} placeholder="Nazwa produktu" className="md:flex-1" />
+          <Input value={extraAmount} onChange={(e) => setExtraAmount(e.target.value)} type="number" min="0.1" step="0.1" className="md:w-28" />
+          <Input value={extraUnit} onChange={(e) => setExtraUnit(e.target.value)} placeholder="szt" className="md:w-28" />
+          <Button type="button" onClick={handleAddExtra} className="md:w-auto">
+            <Plus className="w-4 h-4 mr-2" />Dodaj
+          </Button>
+        </div>
+      </div>
+
       {isLoading ? <LoadingSpinner /> : (
         <div className="bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
           <div className="p-6 bg-primary/5 border-b border-border/50 flex items-center justify-between">
@@ -163,11 +239,11 @@ export default function ShoppingList() {
               <ShoppingCart className="w-5 h-5 text-primary" />
               Produkty do kupienia
             </h2>
-            <span className="text-sm text-muted-foreground">{(list || []).length} pozycji</span>
+            <span className="text-sm text-muted-foreground">{activeItems.length} pozycji</span>
           </div>
           
           <div className="divide-y divide-border/50">
-            {!list || list.length === 0 ? (
+            {activeItems.length === 0 ? (
               <div className="p-12 text-center text-muted-foreground">
                 Twoja lista zakupów jest pusta dla tego okresu. Zaplanuj najpierw posiłki!
               </div>
@@ -179,11 +255,11 @@ export default function ShoppingList() {
                   </div>
                   <div className="divide-y divide-border/50">
                     {groupedList[category].map((item: any) => {
-                      const isChecked = checkedItems[item.ingredientId];
+                      const isChecked = item.isExtra ? item.isChecked : checkedItems[item.ingredientId];
                       return (
                         <div 
                           key={item.ingredientId} 
-                          onClick={() => toggleCheck(item.ingredientId)}
+                          onClick={() => toggleCheck(item)}
                           className={cn(
                             "p-4 flex items-center justify-between hover:bg-muted/30 cursor-pointer transition-colors group",
                             isChecked && "bg-muted/20"
@@ -203,13 +279,40 @@ export default function ShoppingList() {
                           </div>
                           <div className="flex flex-col items-end gap-1">
                             <span className="text-sm font-mono text-muted-foreground bg-secondary px-2 py-1 rounded">
-                              {Math.round(item.totalAmount)} {item.unit}
+                              {item.totalAmount % 1 === 0 ? Math.round(item.totalAmount) : item.totalAmount} {item.unit}
                             </span>
                             {Number(item.unitWeight || 0) > 0 && (
                               <span className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
                                 ok. {(item.totalAmount / Number(item.unitWeight)).toFixed(1)} szt.
                               </span>
                             )}
+                            <div className="flex gap-2">
+                              {item.isExtra ? (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteExtraMutation.mutate(item.extraId);
+                                  }}
+                                >
+                                  <X className="w-4 h-4 text-red-500" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  className="h-7 px-2 text-[10px]"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const isExcluded = excludedItems.includes(item.ingredientId);
+                                    toggleExclusionMutation.mutate({ ingredientId: item.ingredientId, excluded: !isExcluded });
+                                  }}
+                                >
+                                  {excludedItems.includes(item.ingredientId) ? "W domu" : "Mam w domu"}
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -218,6 +321,37 @@ export default function ShoppingList() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {excludedFromHomeItems.length > 0 && (
+        <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
+          <div className="p-6 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+            <h2 className="font-bold text-lg">Masz już w domu</h2>
+            <span className="text-sm text-muted-foreground">{excludedFromHomeItems.length} pozycji</span>
+          </div>
+          <div className="divide-y divide-border/50">
+            {excludedFromHomeItems.map((item: any) => (
+              <div key={`excluded-${item.ingredientId}`} className="p-4 flex items-center justify-between bg-muted/10">
+                <div className="flex items-center gap-4">
+                  <div className="w-6 h-6 rounded-full border-2 border-muted-foreground/30" />
+                  <span className="font-medium text-muted-foreground">{item.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono text-muted-foreground bg-secondary px-2 py-1 rounded">
+                    {item.totalAmount % 1 === 0 ? Math.round(item.totalAmount) : item.totalAmount} {item.unit}
+                  </span>
+                  <Button
+                    variant="outline"
+                    className="h-7 px-2 text-[10px]"
+                    onClick={() => toggleExclusionMutation.mutate({ ingredientId: item.ingredientId, excluded: false })}
+                  >
+                    Przywróć
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

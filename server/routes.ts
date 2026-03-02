@@ -432,13 +432,13 @@ export async function registerRoutes(
   app.get(api.mealPlan.getShoppingList.path, async (req, res) => {
     const { startDate, endDate } = req.query as { startDate: string, endDate: string };
     const entries = await storage.getMealEntriesRange(startDate, endDate);
-    
+    const excludedItems = new Set(await storage.getShoppingListExcludedItems());
+
     const shoppingMap = new Map<number, { name: string, amount: number, unit: string, category: string, unitWeight: number | null }>();
 
     entries.forEach(entry => {
-      // Use entry-specific ingredients if they exist, otherwise fallback to recipe defaults
-      const ingredientsToUse = entry.ingredients.length > 0 
-        ? entry.ingredients 
+      const ingredientsToUse = entry.ingredients.length > 0
+        ? entry.ingredients
         : (entry.recipe?.ingredients || []);
 
       ingredientsToUse.forEach(ri => {
@@ -453,7 +453,7 @@ export async function registerRoutes(
           shoppingMap.set(ri.ingredientId, {
             name: (ri.ingredient as any).name,
             amount: amount,
-            unit: "g", // Force gram unit in shopping list
+            unit: "g",
             category: (ri.ingredient as any).category || "Inne",
             unitWeight: (ri.ingredient as any).unitWeight
           });
@@ -468,10 +468,24 @@ export async function registerRoutes(
       unit: val.unit,
       category: val.category,
       unitWeight: val.unitWeight,
-      isChecked: false // Default state for frontend
+      isChecked: false,
+      isExcluded: excludedItems.has(id),
     }));
 
-    res.json(list);
+    const extras = await storage.getShoppingListExtras();
+    const normalizedExtras = extras.map((extra) => ({
+      ingredientId: -extra.id,
+      extraId: extra.id,
+      name: extra.name,
+      totalAmount: Number(extra.amount || 1),
+      unit: extra.unit || "szt",
+      category: extra.category || "Dodatkowe",
+      unitWeight: null,
+      isChecked: !!extra.isChecked,
+      isExtra: true,
+    }));
+
+    res.json([...list, ...normalizedExtras]);
   });
 
   app.get("/api/shopping-list/checks", async (req, res) => {
@@ -482,6 +496,43 @@ export async function registerRoutes(
   app.post("/api/shopping-list/checks", async (req, res) => {
     const { ingredientId, isChecked } = req.body;
     await storage.toggleShoppingListCheck(Number(ingredientId), Boolean(isChecked));
+    res.json({ success: true });
+  });
+
+  app.post("/api/shopping-list/extras", async (req, res) => {
+    const input = z.object({
+      name: z.string().min(1),
+      amount: z.number().positive().optional(),
+      unit: z.string().min(1).optional(),
+      category: z.string().min(1).optional(),
+    }).parse(req.body);
+    const extra = await storage.addShoppingListExtra(input);
+    res.status(201).json(extra);
+  });
+
+  app.patch("/api/shopping-list/extras/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    const input = z.object({ isChecked: z.boolean() }).parse(req.body);
+    await storage.toggleShoppingListExtraCheck(id, input.isChecked);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/shopping-list/extras/:id", async (req, res) => {
+    await storage.deleteShoppingListExtra(Number(req.params.id));
+    res.status(204).end();
+  });
+
+  app.get("/api/shopping-list/exclusions", async (_req, res) => {
+    const excluded = await storage.getShoppingListExcludedItems();
+    res.json(excluded);
+  });
+
+  app.post("/api/shopping-list/exclusions", async (req, res) => {
+    const input = z.object({
+      ingredientId: z.number(),
+      excluded: z.boolean(),
+    }).parse(req.body);
+    await storage.setShoppingListExcludedItem(input.ingredientId, input.excluded);
     res.json({ success: true });
   });
 
