@@ -123,6 +123,15 @@ export function RecipeView({
     return calculateScaledAmount(ri, servingsToUse, recipeServings);
   };
 
+  const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number }) => {
+    const ingredientData = baseIngredients.find((ri: any) => Number(ri.ingredientId) === Number(segment.ingredientId));
+    if (!ingredientData) return segment.text;
+
+    const amount = Math.round(getScaledAmount(ingredientData));
+    const unit = ingredientData.unit || ingredientData.ingredient?.unit || "g";
+    return `${ingredientData.ingredient?.name || segment.text}-${amount}${unit}`;
+  };
+
   const baseCaloriesPerServing = Math.round((recipe?.ingredients || []).reduce((sum: number, ri: any) =>
     sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
   ) / recipeServings);
@@ -163,7 +172,7 @@ export function RecipeView({
                       key={`${segment.ingredientId}-${idx}`}
                       className="inline rounded-full bg-primary/10 text-primary px-2 py-0.5 mx-0.5"
                       onClick={() => setSelectedIngredientId(Number(segment.ingredientId))}
-                    >{segment.text}</button>
+                    >{getCookingModeIngredientLabel(segment)}</button>
                   ) : <span key={`${segment.text}-${idx}`}>{segment.text}</span>
                 )) : "Brak kroków. Dodaj instrukcje do przepisu."}
               </p>
@@ -232,7 +241,6 @@ export function RecipeView({
               return (
                 <div className="rounded-xl border p-3 text-xs bg-white">
                   <p className="font-semibold">{ingredientData.ingredient?.name}</p>
-                  <p>Ilość: {Math.round(getScaledAmount(ingredientData))}{ingredientData.unit || "g"}</p>
                   <p>Status: {usedIngredientIds.includes(selectedIngredientId) ? "użyty" : "nieużyty"}</p>
                   <div className="flex gap-2 mt-2">
                     <Button size="sm" variant="outline" onClick={() => setUsedIngredientIds((prev) => prev.includes(selectedIngredientId) ? prev.filter((id) => id !== selectedIngredientId) : [...prev, selectedIngredientId])}>
