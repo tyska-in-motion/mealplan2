@@ -1095,6 +1095,7 @@ export default function Recipes() {
           setViewingRecipe(null);
           setIsAddToPlanOpen(true);
         }}
+        availableIngredientIds={effectiveAvailableIngredientIds}
       />
 
       <Dialog

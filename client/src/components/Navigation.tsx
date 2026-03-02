@@ -7,9 +7,9 @@ export function Navigation() {
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/summary", label: "Summary", icon: ChartColumnBig },
     { href: "/meal-plan", label: "Meal Plan", icon: CalendarDays },
     { href: "/recipes", label: "Recipes", icon: UtensilsCrossed },
-    { href: "/summary", label: "Summary", icon: ChartColumnBig },
     { href: "/ingredients", label: "Ingredients", icon: Leaf },
     { href: "/shopping-list", label: "Shopping", icon: ShoppingCart },
   ];
