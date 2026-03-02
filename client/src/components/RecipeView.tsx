@@ -22,6 +22,7 @@ interface RecipeViewProps {
   showFooter?: boolean;
   mealEntryIngredients?: any[];
   frequentAddonIds?: number[];
+  availableIngredientIds?: number[];
 }
 
 export function RecipeView({ 
@@ -34,6 +35,7 @@ export function RecipeView({
   showFooter = true,
   mealEntryIngredients,
   frequentAddonIds = [],
+  availableIngredientIds = [],
 }: RecipeViewProps) {
   const [isCookingMode, setIsCookingMode] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -60,6 +62,7 @@ export function RecipeView({
     : (recipe?.ingredients || []);
 
   const frequentAddonSet = new Set((frequentAddonIds || []).map((id) => Number(id)));
+  const availableIngredientSet = new Set((availableIngredientIds || []).map((id) => Number(id)));
 
   const currentStepText = instructionSteps[currentStepIndex] || "";
   const currentStepDurationMinutes = parseDurationFromStep(currentStepText);
@@ -303,15 +306,26 @@ export function RecipeView({
               <ul className="space-y-2">
                 {baseIngredients.map((ri: any, idx: number) => {
                   const isFrequentAddon = frequentAddonSet.has(Number(ri.ingredientId));
+                  const isAvailable = availableIngredientSet.has(Number(ri.ingredientId));
+                  const ingredientItemClass = isFrequentAddon
+                    ? "border-emerald-300 bg-emerald-50/70"
+                    : isAvailable
+                      ? "border-sky-300 bg-sky-50/80"
+                      : "border-transparent bg-secondary/50";
 
                   return (
                   <li
                     key={idx}
-                    className={`flex flex-col p-2 rounded-lg border ${isFrequentAddon ? "border-emerald-300 bg-emerald-50/70" : "border-transparent bg-secondary/50"}`}
+                    className={`flex flex-col p-2 rounded-lg border ${ingredientItemClass}`}
                   >
                     <div className="flex justify-between items-center gap-2">
                       <span className="font-semibold">
                         {ri.ingredient?.name}
+                        {isAvailable && !isFrequentAddon && (
+                          <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+                            Posiadam
+                          </span>
+                        )}
                         {isFrequentAddon && (
                           <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
                             Dodatek
