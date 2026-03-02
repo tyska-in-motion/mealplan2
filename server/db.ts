@@ -40,4 +40,10 @@ export async function ensureDbCompat() {
   await pool.query(`ALTER TABLE recipe_ingredients ALTER COLUMN unit SET NOT NULL`);
   await pool.query(`ALTER TABLE recipe_ingredients ALTER COLUMN scaling_type SET NOT NULL`);
   await pool.query(`ALTER TABLE recipe_ingredients ALTER COLUMN scaling_type SET DEFAULT 'LINEAR'`);
+
+  // Backward-compatible self-healing for recipe favorites migration
+  await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS is_favorite boolean DEFAULT false`);
+  await pool.query(`UPDATE recipes SET is_favorite = false WHERE is_favorite IS NULL`);
+  await pool.query(`ALTER TABLE recipes ALTER COLUMN is_favorite SET NOT NULL`);
+  await pool.query(`ALTER TABLE recipes ALTER COLUMN is_favorite SET DEFAULT false`);
 }
