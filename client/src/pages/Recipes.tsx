@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { buildInstructionSteps, parseInstructionLines, type InstructionLink } from "@/lib/instruction-steps";
 import { format, addDays } from "date-fns";
 import { pl } from "date-fns/locale";
 import {
@@ -39,6 +40,7 @@ const createRecipeSchema = z.object({
   tags: z.array(z.string()).optional().default([]),
   description: z.string().optional(),
   instructions: z.string().optional(),
+  instructionSteps: z.array(z.any()).optional(),
   prepTime: z.coerce.number().min(0),
   servings: z.coerce.number().min(0.1).default(1),
   imageUrl: z.string().optional().or(z.literal("")),
@@ -79,6 +81,8 @@ export default function Recipes() {
   const [sortBy, setSortBy] = useState<string>("frequency");
   const [manualAvailableIngredientIds, setManualAvailableIngredientIds] = useState<number[]>([]);
   const [excludedDefaultIngredientIds, setExcludedDefaultIngredientIds] = useState<number[]>([]);
+  const [instructionLinks, setInstructionLinks] = useState<InstructionLink[]>([]);
+  const [newInstructionLink, setNewInstructionLink] = useState<InstructionLink>({ stepIndex: 0, text: "", ingredientId: 0 });
 
   const allTags = Array.from(new Set(recipes?.flatMap(r => r.tags || []) || [])) as string[];
 
@@ -309,6 +313,8 @@ export default function Recipes() {
 
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [viewingRecipe, setViewingRecipe] = useState<any>(null);
+  const watchedInstructions = form.watch("instructions");
+  const instructionLines = useMemo(() => parseInstructionLines(watchedInstructions), [watchedInstructions]);
 
 
   const getRecipeCaloriesPerServing = (recipe: any) => {
@@ -348,6 +354,7 @@ export default function Recipes() {
       tags: recipe.tags || [],
       description: recipe.description || "",
       instructions: recipe.instructions || "",
+      instructionSteps: recipe.instructionSteps || [],
       prepTime: recipe.prepTime,
       servings: recipe.servings || 1,
       imageUrl: recipe.imageUrl || "",
@@ -365,6 +372,16 @@ export default function Recipes() {
         amount: Number(addon.baseAmount ?? addon.amount ?? 0),
       })),
     });
+    const initialLinks: InstructionLink[] = (recipe.instructionSteps || []).flatMap((step: any, stepIndex: number) =>
+      (step?.segments || [])
+        .filter((segment: any) => segment.type === "ingredient")
+        .map((segment: any) => ({
+          stepIndex,
+          text: segment.text,
+          ingredientId: Number(segment.ingredientId),
+        }))
+    );
+    setInstructionLinks(initialLinks);
     setIsOpen(true);
   };
 
@@ -376,12 +393,15 @@ export default function Recipes() {
       tags: [],
       description: "",
       instructions: "",
+      instructionSteps: [],
       prepTime: 15,
       servings: 1,
       imageUrl: "",
       ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
       frequentAddons: [],
     });
+    setInstructionLinks([]);
+    setNewInstructionLink({ stepIndex: 0, text: "", ingredientId: 0 });
   };
 
   const { mutate: createRecipeMutation, isPending: isCreating } = useCreateRecipe();
@@ -393,6 +413,7 @@ export default function Recipes() {
       tags: recipe.tags || [],
       description: recipe.description || "",
       instructions: recipe.instructions || "",
+      instructionSteps: recipe.instructionSteps || [],
       prepTime: recipe.prepTime || 0,
       imageUrl: recipe.imageUrl || "",
       servings: Number(recipe.servings) || 1,
@@ -423,8 +444,10 @@ export default function Recipes() {
   };
 
   const onSubmit = (data: any) => {
+    const instructionSteps = buildInstructionSteps(data.instructions, instructionLinks);
     const normalizedData = {
       ...data,
+      instructionSteps,
       ingredients: (data.ingredients || []).map((ingredient: any) => ({
         ...ingredient,
         baseAmount: Number(ingredient.baseAmount ?? ingredient.amount ?? 0),
@@ -469,9 +492,9 @@ export default function Recipes() {
           <p className="text-muted-foreground">Znajdź lub stwórz swój kolejny ulubiony posiłek.</p>
         </div>
         
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) closeDialog(); else setIsOpen(true); }}>
           <DialogTrigger asChild>
-            <Button data-testid="button-create-recipe" className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 rounded-xl h-12 px-6 shadow-lg shadow-primary/20" onClick={() => setIsOpen(true)}>
+            <Button data-testid="button-create-recipe" className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 rounded-xl h-12 px-6 shadow-lg shadow-primary/20" onClick={() => { if (!editingRecipe) closeDialog(); setIsOpen(true); }}>
               <Plus className="w-5 h-5" /> Stwórz przepis
             </Button>
           </DialogTrigger>
@@ -755,10 +778,51 @@ export default function Recipes() {
                   placeholder={"1. Pokrój warzywa\n2. Smaż 8 minut [timer:8]\n3. Dopraw i podaj"}
                 />
                 <p className="text-xs text-muted-foreground mt-1">To samo pole zasila widok instrukcji i cooking mode. Opcjonalny timer dodasz jako [timer:liczba].</p>
+
+                <div className="mt-3 rounded-xl border p-3 space-y-2 bg-secondary/20">
+                  <p className="text-xs font-semibold">Mapowanie fragmentów na składniki (Cooking Mode)</p>
+                  <div className="grid sm:grid-cols-3 gap-2">
+                    <Select value={String(newInstructionLink.stepIndex)} onValueChange={(v) => setNewInstructionLink((prev) => ({ ...prev, stepIndex: Number(v) }))}>
+                      <SelectTrigger><SelectValue placeholder="Krok" /></SelectTrigger>
+                      <SelectContent>
+                        {instructionLines.map((line, idx) => (<SelectItem key={idx} value={String(idx)}>Krok {idx + 1}: {line.slice(0, 24)}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                    <Input placeholder="Fragment tekstu" value={newInstructionLink.text} onChange={(e) => setNewInstructionLink((prev) => ({ ...prev, text: e.target.value }))} />
+                    <div className="flex gap-2">
+                      <Select value={String(newInstructionLink.ingredientId || "0")} onValueChange={(v) => setNewInstructionLink((prev) => ({ ...prev, ingredientId: Number(v) }))}>
+                        <SelectTrigger><SelectValue placeholder="Składnik" /></SelectTrigger>
+                        <SelectContent>
+                          {(availableIngredients || []).map((ingredient: any) => (<SelectItem key={ingredient.id} value={String(ingredient.id)}>{ingredient.name}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          if (!newInstructionLink.text.trim() || !newInstructionLink.ingredientId) return;
+                          setInstructionLinks((prev) => [...prev, newInstructionLink]);
+                          setNewInstructionLink((prev) => ({ ...prev, text: "" }));
+                        }}
+                      >Dodaj</Button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {instructionLinks.map((link, idx) => {
+                      const ingredientName = (availableIngredients || []).find((ing: any) => ing.id === link.ingredientId)?.name || `#${link.ingredientId}`;
+                      return (
+                        <div key={`${link.stepIndex}-${link.text}-${idx}`} className="flex items-center justify-between text-xs bg-white rounded-md px-2 py-1 border">
+                          <span>Krok {link.stepIndex + 1}: <b>{link.text}</b> → {ingredientName}</span>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setInstructionLinks((prev) => prev.filter((_, i) => i !== idx))}>Usuń</Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 sm:pt-4">
-                <Button type="button" variant="ghost" onClick={() => setIsOpen(false)}>Anuluj</Button>
+                <Button type="button" variant="ghost" onClick={closeDialog}>Anuluj</Button>
                 <Button type="submit" disabled={isCreating || isUpdating}>
                   {isCreating || isUpdating ? "Zapisywanie..." : "Zapisz przepis"}
                 </Button>

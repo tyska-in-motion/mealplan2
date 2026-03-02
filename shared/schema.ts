@@ -4,6 +4,14 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export type InstructionSegment =
+  | { type: "text"; text: string }
+  | { type: "ingredient"; text: string; ingredientId: number };
+
+export type InstructionStep = {
+  segments: InstructionSegment[];
+};
+
 // === TABLE DEFINITIONS ===
 
 export const ingredients = pgTable("ingredients", {
@@ -37,6 +45,7 @@ export const recipes = pgTable("recipes", {
   tags: text("tags").array(), // e.g. ["szybkie", "śniadanie"]
   description: text("description"),
   instructions: text("instructions"),
+  instructionSteps: jsonb("instruction_steps").$type<InstructionStep[]>(),
   prepTime: integer("prep_time"), // minutes
   imageUrl: text("image_url"),
   servings: real("servings").notNull().default(1),

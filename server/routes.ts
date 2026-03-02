@@ -26,6 +26,15 @@ const recipeIngredientInputSchema = z.object({
   stepThresholds: z.array(stepThresholdSchema).optional(),
 });
 
+const instructionSegmentSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({ type: z.literal("ingredient"), text: z.string(), ingredientId: z.number() }),
+]);
+
+const instructionStepSchema = z.object({
+  segments: z.array(instructionSegmentSchema),
+});
+
 
 function resolveIngredientForScaling(entry: any, ingredientRow: any) {
   const recipeIngredient = (entry?.recipe?.ingredients || []).find(
@@ -209,6 +218,7 @@ export async function registerRoutes(
         tags: z.array(z.string()).optional().default([]),
         description: z.string().optional(),
         instructions: z.string().optional(),
+        instructionSteps: z.array(instructionStepSchema).optional(),
         prepTime: z.number().optional(),
         imageUrl: z.string().optional(),
         isFavorite: z.boolean().optional().default(false),
@@ -238,6 +248,7 @@ export async function registerRoutes(
         tags: z.array(z.string()).optional().default([]),
         description: z.string().optional(),
         instructions: z.string().optional(),
+        instructionSteps: z.array(instructionStepSchema).optional(),
         prepTime: z.number().optional(),
         imageUrl: z.string().optional(),
         isFavorite: z.boolean().optional(),
