@@ -32,6 +32,7 @@ export const userSettings = pgTable("user_settings", {
 export const recipes = pgTable("recipes", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  isFavorite: boolean("is_favorite").notNull().default(false),
   tags: text("tags").array(), // e.g. ["szybkie", "śniadanie"]
   description: text("description"),
   instructions: text("instructions"),

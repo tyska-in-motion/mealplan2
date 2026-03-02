@@ -169,6 +169,7 @@ export class DatabaseStorage implements IStorage {
       instructions: req.instructions,
       prepTime: req.prepTime,
       imageUrl: req.imageUrl,
+      isFavorite: req.isFavorite ?? false,
       servings: req.servings || 1,
     }).returning();
 
@@ -209,6 +210,7 @@ export class DatabaseStorage implements IStorage {
         instructions: req.instructions,
         prepTime: req.prepTime,
         imageUrl: req.imageUrl,
+        isFavorite: req.isFavorite,
         servings: req.servings || 1,
       })
       .where(eq(recipes.id, id));
