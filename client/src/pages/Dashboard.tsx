@@ -42,7 +42,7 @@ export default function Dashboard() {
   const [quickCustomProtein, setQuickCustomProtein] = useState<number>(25);
   const [quickCustomCarbs, setQuickCustomCarbs] = useState<number>(45);
   const [quickCustomFat, setQuickCustomFat] = useState<number>(15);
-  const [servingInputs, setServingInputs] = useState<Record<number, string>>({});
+  const [servingInputs, setServingInputs] = useState<Record<string, string>>({});
   const [targetsByPerson, setTargetsByPerson] = useState<Record<"A" | "B", PersonTargets>>({
     A: { calories: 1850, protein: 120, carbs: 205, fat: 61 },
     B: { calories: 2700, protein: 170, carbs: 302, fat: 90 },
@@ -273,6 +273,9 @@ export default function Dashboard() {
     }
   };
 
+
+  const getServingInputKey = (entry: any) => `${entry.id}-${entry.person || "A"}`;
+
   const updateServingsQuick = (entry: any, nextServings: number) => {
     const parsed = Number(nextServings);
     if (!parsed || parsed <= 0) return;
@@ -282,18 +285,22 @@ export default function Dashboard() {
       updates: {
         servings: parsed,
         isEaten: !!entry.isEaten,
+        person: entry.person || "A",
+        date: entry.date,
+        mealType: entry.mealType,
       },
     });
   };
 
   const applyServingInput = (entry: any) => {
-    const rawValue = servingInputs[entry.id];
+    const inputKey = getServingInputKey(entry);
+    const rawValue = servingInputs[inputKey];
     if (rawValue === undefined) return;
     const parsed = Number(rawValue.replace(",", "."));
     if (!parsed || parsed <= 0) {
       setServingInputs((prev) => {
         const next = { ...prev };
-        delete next[entry.id];
+        delete next[inputKey];
         return next;
       });
       return;
@@ -303,7 +310,7 @@ export default function Dashboard() {
     updateServingsQuick(entry, rounded);
     setServingInputs((prev) => {
       const next = { ...prev };
-      delete next[entry.id];
+      delete next[inputKey];
       return next;
     });
   };
@@ -652,19 +659,19 @@ export default function Dashboard() {
                                 </button>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                               {meal.recipe ? (
-                                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                <span className="text-[9px] sm:text-[10px] font-bold text-primary bg-primary/10 px-1.5 sm:px-2 py-0.5 rounded-full whitespace-nowrap">
                                   {personName[meal.person || "A"]}: {(Number(meal.servings) || 1)}/{(Number(meal.recipe?.servings) || 1)} porcji
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-bold text-muted-foreground bg-secondary/60 px-2 py-0.5 rounded-full">
+                                <span className="text-[9px] sm:text-[10px] font-bold text-muted-foreground bg-secondary/60 px-1.5 sm:px-2 py-0.5 rounded-full whitespace-nowrap">
                                   {personName[meal.person || "A"]}: x{Number(meal.servings) || 1}
                                 </span>
                               )}
                               <div className="flex items-center gap-1 rounded-full border border-border bg-white px-1 py-0.5">
                                 <button
-                                  className="h-5 w-5 text-xs rounded-full hover:bg-secondary"
+                                  className="h-6 w-6 text-xs rounded-full hover:bg-secondary shrink-0"
                                   onClick={() => updateServingsQuick(meal, Math.max(0.5, (Number(meal.servings) || 1) - 0.5))}
                                   title="Zmniejsz porcję"
                                 >
@@ -675,9 +682,9 @@ export default function Dashboard() {
                                   inputMode="decimal"
                                   min={0.5}
                                   step={0.5}
-                                  className="h-5 w-[56px] text-[10px] font-semibold px-1 py-0 text-center"
-                                  value={servingInputs[meal.id] ?? Number(meal.servings || 1).toFixed(2).replace(/\.00$/, "")}
-                                  onChange={(e) => setServingInputs((prev) => ({ ...prev, [meal.id]: e.target.value }))}
+                                  className="h-6 w-12 sm:w-14 text-[11px] font-semibold px-1 py-0 text-center"
+                                  value={servingInputs[getServingInputKey(meal)] ?? String(Number(meal.servings) || 1)}
+                                  onChange={(e) => setServingInputs((prev) => ({ ...prev, [getServingInputKey(meal)]: e.target.value }))}
                                   onBlur={() => applyServingInput(meal)}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") {
@@ -687,7 +694,7 @@ export default function Dashboard() {
                                   aria-label="Liczba porcji"
                                 />
                                 <button
-                                  className="h-5 w-5 text-xs rounded-full hover:bg-secondary"
+                                  className="h-6 w-6 text-xs rounded-full hover:bg-secondary shrink-0"
                                   onClick={() => updateServingsQuick(meal, (Number(meal.servings) || 1) + 0.5)}
                                   title="Zwiększ porcję"
                                 >
