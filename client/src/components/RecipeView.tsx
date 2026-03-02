@@ -1,6 +1,7 @@
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Clock, ChefHat, CalendarPlus, Settings2 } from "lucide-react";
+import { Clock, ChefHat, CalendarPlus, Settings2, Play, Pause, RotateCcw, ChefHatIcon } from "lucide-react";
 import { calculateScaledAmount } from "@shared/scaling";
 
 interface RecipeViewProps {
@@ -26,7 +27,30 @@ export function RecipeView({
   mealEntryIngredients,
   frequentAddonIds = [],
 }: RecipeViewProps) {
+  const [isCookingMode, setIsCookingMode] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [timerRemainingSeconds, setTimerRemainingSeconds] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+
   if (!recipe) return null;
+
+  const parseDurationFromStep = (step: string) => {
+    const explicitTimer = step.match(/\[timer\s*:\s*(\d+)\]/i);
+    if (explicitTimer) return Number(explicitTimer[1]);
+
+    const naturalLanguage = step.match(/(\d+)\s*(min|minut|minuty|minute|minutes)/i);
+    return naturalLanguage ? Number(naturalLanguage[1]) : 0;
+  };
+
+  const instructionSteps = useMemo(() => {
+    if (!recipe.instructions) return [];
+
+    return recipe.instructions
+      .split(/\n+/)
+      .map((line: string) => line.trim())
+      .filter(Boolean)
+      .map((line: string) => line.replace(/^\d+[.)]\s*/, ""));
+  }, [recipe.instructions]);
 
   const isPlannedView = plannedServings !== undefined;
   const recipeServings = Number(recipe.servings) || 1;
@@ -38,6 +62,58 @@ export function RecipeView({
     : recipe.ingredients;
 
   const frequentAddonSet = new Set((frequentAddonIds || []).map((id) => Number(id)));
+
+  const currentStepText = instructionSteps[currentStepIndex] || "";
+  const currentStepDurationMinutes = parseDurationFromStep(currentStepText);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsCookingMode(false);
+      setCurrentStepIndex(0);
+      setTimerRemainingSeconds(0);
+      setIsTimerRunning(false);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isCookingMode || !isTimerRunning || timerRemainingSeconds <= 0) {
+      if (timerRemainingSeconds <= 0) setIsTimerRunning(false);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setTimerRemainingSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [isCookingMode, isTimerRunning, timerRemainingSeconds]);
+
+  useEffect(() => {
+    if (!isCookingMode || !("wakeLock" in navigator)) return;
+
+    let wakeLock: any;
+    const requestWakeLock = async () => {
+      try {
+        wakeLock = await (navigator as any).wakeLock.request("screen");
+      } catch {
+        // Ignore if the browser blocks Wake Lock API.
+      }
+    };
+
+    requestWakeLock();
+
+    return () => {
+      if (wakeLock) {
+        wakeLock.release().catch(() => undefined);
+      }
+    };
+  }, [isCookingMode]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60).toString().padStart(2, "0");
+    const secs = Math.floor(seconds % 60).toString().padStart(2, "0");
+    return `${mins}:${secs}`;
+  };
 
   const getScaledAmount = (ri: any) => {
     if (typeof ri?.calculatedAmount === "number" && Number.isFinite(ri.calculatedAmount)) {
@@ -56,8 +132,89 @@ export function RecipeView({
   )) / recipeServings);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          setIsCookingMode(false);
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white">
+        {isCookingMode ? (
+          <div className="space-y-6">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2"><ChefHatIcon className="w-5 h-5" /> Tryb gotowania</span>
+                <Button variant="outline" onClick={() => setIsCookingMode(false)}>Wyjdź</Button>
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="rounded-2xl bg-secondary/30 p-6 text-center space-y-4">
+              <p className="text-sm text-muted-foreground">Krok {Math.min(currentStepIndex + 1, instructionSteps.length)} / {instructionSteps.length || 1}</p>
+              <p className="text-2xl sm:text-3xl font-bold leading-snug">
+                {currentStepText || "Brak kroków. Dodaj instrukcje do przepisu."}
+              </p>
+              {currentStepDurationMinutes > 0 && (
+                <p className="text-sm text-muted-foreground">Wykryto timer: {currentStepDurationMinutes} min</p>
+              )}
+            </div>
+
+            <div className="rounded-2xl border p-6 space-y-4">
+              <p className="text-4xl font-bold text-center tabular-nums">{formatTime(timerRemainingSeconds)}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Button
+                  className="h-14 text-lg"
+                  onClick={() => {
+                    if (timerRemainingSeconds === 0 && currentStepDurationMinutes > 0) {
+                      setTimerRemainingSeconds(currentStepDurationMinutes * 60);
+                    }
+                    setIsTimerRunning((prev) => !prev);
+                  }}
+                  disabled={currentStepDurationMinutes <= 0 && timerRemainingSeconds <= 0}
+                >
+                  {isTimerRunning ? <Pause className="w-5 h-5 mr-2" /> : <Play className="w-5 h-5 mr-2" />}
+                  {isTimerRunning ? "Pauza" : "Start"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-14 text-lg"
+                  onClick={() => {
+                    setIsTimerRunning(false);
+                    setTimerRemainingSeconds(currentStepDurationMinutes * 60);
+                  }}
+                  disabled={currentStepDurationMinutes <= 0}
+                >
+                  <RotateCcw className="w-5 h-5 mr-2" />
+                  Reset
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-14 text-lg"
+                  onClick={() => {
+                    setIsTimerRunning(false);
+                    setTimerRemainingSeconds(0);
+                  }}
+                >
+                  Stop
+                </Button>
+              </div>
+            </div>
+
+            <Button
+              className="w-full h-16 text-2xl font-bold"
+              onClick={() => {
+                const nextIndex = Math.min(currentStepIndex + 1, Math.max(instructionSteps.length - 1, 0));
+                setCurrentStepIndex(nextIndex);
+                setIsTimerRunning(false);
+                setTimerRemainingSeconds(parseDurationFromStep(instructionSteps[nextIndex] || "") * 60);
+              }}
+            >
+              Następny krok
+            </Button>
+          </div>
+        ) : (
         <div className="space-y-6">
           <div 
             className="h-64 rounded-2xl bg-cover bg-center"
@@ -180,6 +337,17 @@ export function RecipeView({
               <p className="whitespace-pre-wrap text-muted-foreground leading-relaxed">
                 {recipe.instructions || "Brak instrukcji."}
               </p>
+              {instructionSteps.length > 0 && (
+                <Button className="mt-4" onClick={() => {
+                  setCurrentStepIndex(0);
+                  setTimerRemainingSeconds(parseDurationFromStep(instructionSteps[0]) * 60);
+                  setIsTimerRunning(false);
+                  setIsCookingMode(true);
+                }}>
+                  <ChefHatIcon className="w-4 h-4 mr-2" />
+                  Uruchom cooking mode
+                </Button>
+              )}
             </div>
           </div>
           {showFooter && (
@@ -194,6 +362,7 @@ export function RecipeView({
             </DialogFooter>
           )}
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );
