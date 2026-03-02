@@ -442,7 +442,7 @@ export async function registerRoutes(
         : (entry.recipe?.ingredients || []);
 
       ingredientsToUse.forEach(ri => {
-        if (!ri.ingredient) return;
+        if (!ri.ingredient || excludedItems.has(Number(ri.ingredientId))) return;
         const existing = shoppingMap.get(ri.ingredientId);
         const entryServings = Number(entry.servings) || 1;
         const recipeServings = Number(entry.recipe?.servings || 1);
