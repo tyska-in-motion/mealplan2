@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
-import { format, addDays, startOfWeek, endOfWeek } from "date-fns";
+import { format, startOfWeek, endOfWeek } from "date-fns";
 import { useShoppingList } from "@/hooks/use-meal-plan";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Check, ShoppingCart, Calendar, FileDown, Plus, X } from "lucide-react";
@@ -77,7 +77,10 @@ export default function ShoppingList() {
     }
   });
 
-  const groupedList = (list || []).reduce((acc: Record<string, any[]>, item: any) => {
+  const activeItems = (list || []).filter((item: any) => !item.isExcluded);
+  const excludedFromHomeItems = (list || []).filter((item: any) => !!item.isExcluded);
+
+  const groupedList = activeItems.reduce((acc: Record<string, any[]>, item: any) => {
     const category = item.category || "Inne";
     if (!acc[category]) acc[category] = [];
     acc[category].push(item);
@@ -236,11 +239,11 @@ export default function ShoppingList() {
               <ShoppingCart className="w-5 h-5 text-primary" />
               Produkty do kupienia
             </h2>
-            <span className="text-sm text-muted-foreground">{(list || []).length} pozycji</span>
+            <span className="text-sm text-muted-foreground">{activeItems.length} pozycji</span>
           </div>
           
           <div className="divide-y divide-border/50">
-            {!list || list.length === 0 ? (
+            {activeItems.length === 0 ? (
               <div className="p-12 text-center text-muted-foreground">
                 Twoja lista zakupów jest pusta dla tego okresu. Zaplanuj najpierw posiłki!
               </div>
@@ -306,7 +309,7 @@ export default function ShoppingList() {
                                     toggleExclusionMutation.mutate({ ingredientId: item.ingredientId, excluded: !isExcluded });
                                   }}
                                 >
-                                  {excludedItems.includes(item.ingredientId) ? "Przywróć" : "Mam w domu"}
+                                  {excludedItems.includes(item.ingredientId) ? "W domu" : "Mam w domu"}
                                 </Button>
                               )}
                             </div>
@@ -318,6 +321,37 @@ export default function ShoppingList() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {excludedFromHomeItems.length > 0 && (
+        <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
+          <div className="p-6 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+            <h2 className="font-bold text-lg">Masz już w domu</h2>
+            <span className="text-sm text-muted-foreground">{excludedFromHomeItems.length} pozycji</span>
+          </div>
+          <div className="divide-y divide-border/50">
+            {excludedFromHomeItems.map((item: any) => (
+              <div key={`excluded-${item.ingredientId}`} className="p-4 flex items-center justify-between bg-muted/10">
+                <div className="flex items-center gap-4">
+                  <div className="w-6 h-6 rounded-full border-2 border-muted-foreground/30" />
+                  <span className="font-medium text-muted-foreground">{item.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono text-muted-foreground bg-secondary px-2 py-1 rounded">
+                    {item.totalAmount % 1 === 0 ? Math.round(item.totalAmount) : item.totalAmount} {item.unit}
+                  </span>
+                  <Button
+                    variant="outline"
+                    className="h-7 px-2 text-[10px]"
+                    onClick={() => toggleExclusionMutation.mutate({ ingredientId: item.ingredientId, excluded: false })}
+                  >
+                    Przywróć
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

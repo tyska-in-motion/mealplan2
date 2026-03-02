@@ -468,7 +468,8 @@ export async function registerRoutes(
       unit: val.unit,
       category: val.category,
       unitWeight: val.unitWeight,
-      isChecked: false
+      isChecked: false,
+      isExcluded: excludedItems.has(id),
     }));
 
     const extras = await storage.getShoppingListExtras();
