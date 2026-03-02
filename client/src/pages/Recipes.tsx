@@ -82,7 +82,7 @@ export default function Recipes() {
   const [manualAvailableIngredientIds, setManualAvailableIngredientIds] = useState<number[]>([]);
   const [excludedDefaultIngredientIds, setExcludedDefaultIngredientIds] = useState<number[]>([]);
   const [instructionLinks, setInstructionLinks] = useState<InstructionLink[]>([]);
-  const [newInstructionLink, setNewInstructionLink] = useState<InstructionLink>({ stepIndex: 0, text: "", ingredientId: 0 });
+  const [newInstructionLink, setNewInstructionLink] = useState<InstructionLink>({ stepIndex: 0, text: "", ingredientId: 0, multiplier: 1 });
 
   const allTags = Array.from(new Set(recipes?.flatMap(r => r.tags || []) || [])) as string[];
 
@@ -400,6 +400,7 @@ export default function Recipes() {
           stepIndex,
           text: segment.text,
           ingredientId: Number(segment.ingredientId),
+          multiplier: typeof segment.multiplier === "number" ? segment.multiplier : 1,
         }))
     );
     setInstructionLinks(initialLinks);
@@ -422,7 +423,7 @@ export default function Recipes() {
       frequentAddons: [],
     });
     setInstructionLinks([]);
-    setNewInstructionLink({ stepIndex: 0, text: "", ingredientId: 0 });
+    setNewInstructionLink({ stepIndex: 0, text: "", ingredientId: 0, multiplier: 1 });
   };
 
   const { mutate: createRecipeMutation, isPending: isCreating } = useCreateRecipe();
@@ -802,7 +803,7 @@ export default function Recipes() {
 
                 <div className="mt-3 rounded-xl border p-3 space-y-2 bg-secondary/20">
                   <p className="text-xs font-semibold">Mapowanie fragmentów na składniki (Cooking Mode)</p>
-                  <div className="grid sm:grid-cols-3 gap-2">
+                  <div className="grid sm:grid-cols-4 gap-2">
                     <Select value={String(newInstructionLink.stepIndex)} onValueChange={(v) => setNewInstructionLink((prev) => ({ ...prev, stepIndex: Number(v) }))}>
                       <SelectTrigger><SelectValue placeholder="Krok" /></SelectTrigger>
                       <SelectContent>
@@ -810,6 +811,17 @@ export default function Recipes() {
                       </SelectContent>
                     </Select>
                     <Input placeholder="Fragment tekstu" value={newInstructionLink.text} onChange={(e) => setNewInstructionLink((prev) => ({ ...prev, text: e.target.value }))} />
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      placeholder="Mnożnik"
+                      value={newInstructionLink.multiplier ?? 1}
+                      onChange={(e) => setNewInstructionLink((prev) => ({
+                        ...prev,
+                        multiplier: Number(e.target.value) > 0 ? Number(e.target.value) : 1,
+                      }))}
+                    />
                     <div className="flex gap-2">
                       <Select value={String(newInstructionLink.ingredientId || "0")} onValueChange={(v) => setNewInstructionLink((prev) => ({ ...prev, ingredientId: Number(v) }))}>
                         <SelectTrigger><SelectValue placeholder="Składnik" /></SelectTrigger>
@@ -825,7 +837,7 @@ export default function Recipes() {
                         onClick={() => {
                           if (!newInstructionLink.text.trim() || !newInstructionLink.ingredientId) return;
                           setInstructionLinks((prev) => [...prev, newInstructionLink]);
-                          setNewInstructionLink((prev) => ({ ...prev, text: "" }));
+                          setNewInstructionLink((prev) => ({ ...prev, text: "", multiplier: 1 }));
                         }}
                       >Dodaj</Button>
                     </div>
@@ -835,7 +847,7 @@ export default function Recipes() {
                       const ingredientName = (availableIngredients || []).find((ing: any) => ing.id === link.ingredientId)?.name || `#${link.ingredientId}`;
                       return (
                         <div key={`${link.stepIndex}-${link.text}-${idx}`} className="flex items-center justify-between text-xs bg-white rounded-md px-2 py-1 border">
-                          <span>Krok {link.stepIndex + 1}: <b>{link.text}</b> → {ingredientName}</span>
+                          <span>Krok {link.stepIndex + 1}: <b>{link.text}</b> → {ingredientName} ×{link.multiplier ?? 1}</span>
                           <Button type="button" variant="ghost" size="sm" onClick={() => setInstructionLinks((prev) => prev.filter((_, i) => i !== idx))}>Usuń</Button>
                         </div>
                       );

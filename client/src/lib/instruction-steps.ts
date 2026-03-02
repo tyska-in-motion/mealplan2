@@ -4,6 +4,7 @@ export type InstructionLink = {
   stepIndex: number;
   text: string;
   ingredientId: number;
+  multiplier?: number;
 };
 
 export const parseInstructionLines = (instructions?: string) =>
@@ -39,7 +40,12 @@ export const buildInstructionSteps = (instructions: string | undefined, links: I
           segments.push({ type: "text", text: stepText.slice(cursor, position) });
         }
 
-        segments.push({ type: "ingredient", text: stepText.slice(position, position + link.text.length), ingredientId: link.ingredientId });
+        segments.push({
+          type: "ingredient",
+          text: stepText.slice(position, position + link.text.length),
+          ingredientId: link.ingredientId,
+          multiplier: typeof link.multiplier === "number" && Number.isFinite(link.multiplier) ? link.multiplier : 1,
+        });
         cursor = position + link.text.length;
         matched = true;
         break;

@@ -41,7 +41,7 @@ const recipeIngredientInputSchema = z.object({
 
 const instructionSegmentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
-  z.object({ type: z.literal("ingredient"), text: z.string(), ingredientId: z.number() }),
+  z.object({ type: z.literal("ingredient"), text: z.string(), ingredientId: z.number(), multiplier: z.number().positive().optional() }),
 ]);
 
 const instructionStepSchema = z.object({
