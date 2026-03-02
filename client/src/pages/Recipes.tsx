@@ -314,7 +314,28 @@ export default function Recipes() {
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [viewingRecipe, setViewingRecipe] = useState<any>(null);
   const watchedInstructions = form.watch("instructions");
+  const watchedRecipeIngredients = form.watch("ingredients");
   const instructionLines = useMemo(() => parseInstructionLines(watchedInstructions), [watchedInstructions]);
+  const mappableIngredients = useMemo(() => {
+    const ingredientDictionary = new Map((availableIngredients || []).map((ingredient: any) => [Number(ingredient.id), ingredient]));
+
+    return (watchedRecipeIngredients || [])
+      .map((recipeIngredient: any) => {
+        const ingredientId = Number(recipeIngredient?.ingredientId);
+        const ingredient = ingredientDictionary.get(ingredientId);
+        if (!ingredient) return null;
+
+        const amount = Number(recipeIngredient?.baseAmount ?? recipeIngredient?.amount ?? 0);
+        const unit = recipeIngredient?.unit || ingredient.unit || "g";
+
+        return {
+          id: ingredientId,
+          label: `${ingredient.name}-${amount}${unit}`,
+          name: ingredient.name,
+        };
+      })
+      .filter(Boolean) as { id: number; label: string; name: string }[];
+  }, [availableIngredients, watchedRecipeIngredients]);
 
 
   const getRecipeCaloriesPerServing = (recipe: any) => {
@@ -793,7 +814,9 @@ export default function Recipes() {
                       <Select value={String(newInstructionLink.ingredientId || "0")} onValueChange={(v) => setNewInstructionLink((prev) => ({ ...prev, ingredientId: Number(v) }))}>
                         <SelectTrigger><SelectValue placeholder="Składnik" /></SelectTrigger>
                         <SelectContent>
-                          {(availableIngredients || []).map((ingredient: any) => (<SelectItem key={ingredient.id} value={String(ingredient.id)}>{ingredient.name}</SelectItem>))}
+                          {mappableIngredients.map((ingredient) => (
+                            <SelectItem key={ingredient.id} value={String(ingredient.id)}>{ingredient.label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <Button
