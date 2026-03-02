@@ -148,6 +148,21 @@ export const shoppingListChecks = pgTable("shopping_list_checks", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const shoppingListExtras = pgTable("shopping_list_extras", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  amount: real("amount").notNull().default(1),
+  unit: text("unit").notNull().default("szt"),
+  category: text("category").notNull().default("Dodatkowe"),
+  isChecked: boolean("is_checked").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const shoppingListExcludedItems = pgTable("shopping_list_excluded_items", {
+  ingredientId: integer("ingredient_id").primaryKey(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // === SCHEMAS & TYPES ===
 
 export const insertIngredientSchema = createInsertSchema(ingredients).omit({ id: true });
