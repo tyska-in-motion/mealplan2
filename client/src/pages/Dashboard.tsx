@@ -652,19 +652,19 @@ export default function Dashboard() {
                                 </button>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                               {meal.recipe ? (
-                                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                <span className="text-[9px] sm:text-[10px] font-bold text-primary bg-primary/10 px-1.5 sm:px-2 py-0.5 rounded-full whitespace-nowrap">
                                   {personName[meal.person || "A"]}: {(Number(meal.servings) || 1)}/{(Number(meal.recipe?.servings) || 1)} porcji
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-bold text-muted-foreground bg-secondary/60 px-2 py-0.5 rounded-full">
+                                <span className="text-[9px] sm:text-[10px] font-bold text-muted-foreground bg-secondary/60 px-1.5 sm:px-2 py-0.5 rounded-full whitespace-nowrap">
                                   {personName[meal.person || "A"]}: x{Number(meal.servings) || 1}
                                 </span>
                               )}
                               <div className="flex items-center gap-1 rounded-full border border-border bg-white px-1 py-0.5">
                                 <button
-                                  className="h-5 w-5 text-xs rounded-full hover:bg-secondary"
+                                  className="h-6 w-6 text-xs rounded-full hover:bg-secondary shrink-0"
                                   onClick={() => updateServingsQuick(meal, Math.max(0.5, (Number(meal.servings) || 1) - 0.5))}
                                   title="Zmniejsz porcję"
                                 >
@@ -675,8 +675,8 @@ export default function Dashboard() {
                                   inputMode="decimal"
                                   min={0.5}
                                   step={0.5}
-                                  className="h-5 w-[56px] text-[10px] font-semibold px-1 py-0 text-center"
-                                  value={servingInputs[meal.id] ?? Number(meal.servings || 1).toFixed(2).replace(/\.00$/, "")}
+                                  className="h-6 w-12 sm:w-14 text-[11px] font-semibold px-1 py-0 text-center"
+                                  value={servingInputs[meal.id] ?? String(Number(meal.servings) || 1)}
                                   onChange={(e) => setServingInputs((prev) => ({ ...prev, [meal.id]: e.target.value }))}
                                   onBlur={() => applyServingInput(meal)}
                                   onKeyDown={(e) => {
@@ -687,7 +687,7 @@ export default function Dashboard() {
                                   aria-label="Liczba porcji"
                                 />
                                 <button
-                                  className="h-5 w-5 text-xs rounded-full hover:bg-secondary"
+                                  className="h-6 w-6 text-xs rounded-full hover:bg-secondary shrink-0"
                                   onClick={() => updateServingsQuick(meal, (Number(meal.servings) || 1) + 0.5)}
                                   title="Zwiększ porcję"
                                 >

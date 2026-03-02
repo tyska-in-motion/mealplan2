@@ -1111,16 +1111,16 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
                                   </>
                                 ) : (
                                   <>
-                                    <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => onUpdateEntry(entry.id, { servings: Math.max(0.5, (Number(entry.servings) || 1) - 0.5) })}>
+                                    <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0 rounded-full" onClick={() => onUpdateEntry(entry.id, { servings: Math.max(0.5, (Number(entry.servings) || 1) - 0.5) })}>
                                       <Minus className="h-3 w-3" />
                                     </Button>
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex items-center gap-1 min-w-0">
                                       <Input
                                         type="number"
                                         inputMode="decimal"
                                         min={0.5}
                                         step={0.5}
-                                        className="h-5 w-[56px] text-[10px] font-medium px-1 py-0 text-center"
+                                        className="h-6 w-12 sm:w-14 text-[11px] font-medium px-1 py-0 text-center"
                                         value={servingInputs[entry.id] ?? String(Number(entry.servings) || 1)}
                                         onChange={(e) => setServingInputs((prev) => ({ ...prev, [entry.id]: e.target.value }))}
                                         onBlur={() => applyServingInput(entry)}
@@ -1132,10 +1132,10 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
                                         aria-label="Liczba porcji"
                                       />
                                       {entry.recipe && (
-                                        <span className="text-[10px] font-medium">/ {Number(entry.recipe.servings) || 1}</span>
+                                        <span className="text-[9px] sm:text-[10px] font-medium text-muted-foreground whitespace-nowrap">/ {Number(entry.recipe.servings) || 1}</span>
                                       )}
                                     </div>
-                                    <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => onUpdateEntry(entry.id, { servings: (Number(entry.servings) || 1) + 0.5 })}>
+                                    <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0 rounded-full" onClick={() => onUpdateEntry(entry.id, { servings: (Number(entry.servings) || 1) + 0.5 })}>
                                       <Plus className="h-3 w-3" />
                                     </Button>
                                   </>
