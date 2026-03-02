@@ -61,8 +61,6 @@ export function RecipeView({
   const frequentAddonSet = new Set((frequentAddonIds || []).map((id) => Number(id)));
   const availableIngredientSet = new Set((availableIngredientIds || []).map((id) => Number(id)));
 
-  const [selectedIngredientId, setSelectedIngredientId] = useState<number | null>(null);
-  const [usedIngredientIds, setUsedIngredientIds] = useState<number[]>([]);
   const currentStep = instructionSteps[currentStepIndex];
   const currentStepText = (currentStep?.segments || []).map((segment: any) => segment.text).join("") || "";
   const currentStepDurationMinutes = parseDurationFromStep(currentStepText);
@@ -123,11 +121,12 @@ export function RecipeView({
     return calculateScaledAmount(ri, servingsToUse, recipeServings);
   };
 
-  const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number }) => {
+  const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number; multiplier?: number }) => {
     const ingredientData = baseIngredients.find((ri: any) => Number(ri.ingredientId) === Number(segment.ingredientId));
     if (!ingredientData) return segment.text;
 
-    const amount = Math.round(getScaledAmount(ingredientData));
+    const multiplier = typeof segment.multiplier === "number" && segment.multiplier > 0 ? segment.multiplier : 1;
+    const amount = Math.round(getScaledAmount(ingredientData) * multiplier);
     const unit = ingredientData.unit || ingredientData.ingredient?.unit || "g";
     return `${ingredientData.ingredient?.name || segment.text}-${amount}${unit}`;
   };
@@ -168,11 +167,10 @@ export function RecipeView({
               <p className="text-lg sm:text-2xl font-bold leading-snug">
                 {(currentStep?.segments || []).length > 0 ? currentStep.segments.map((segment: any, idx: number) => (
                   segment.type === "ingredient" ? (
-                    <button
+                    <span
                       key={`${segment.ingredientId}-${idx}`}
                       className="inline rounded-full bg-primary/10 text-primary px-2 py-0.5 mx-0.5"
-                      onClick={() => setSelectedIngredientId(Number(segment.ingredientId))}
-                    >{getCookingModeIngredientLabel(segment)}</button>
+                    >{getCookingModeIngredientLabel(segment)}</span>
                   ) : <span key={`${segment.text}-${idx}`}>{segment.text}</span>
                 )) : "Brak kroków. Dodaj instrukcje do przepisu."}
               </p>
@@ -235,22 +233,6 @@ export function RecipeView({
               Następny krok
             </Button>
 
-            {selectedIngredientId && (() => {
-              const ingredientData = baseIngredients.find((ri: any) => Number(ri.ingredientId) === Number(selectedIngredientId));
-              if (!ingredientData) return null;
-              return (
-                <div className="rounded-xl border p-3 text-xs bg-white">
-                  <p className="font-semibold">{ingredientData.ingredient?.name}</p>
-                  <p>Status: {usedIngredientIds.includes(selectedIngredientId) ? "użyty" : "nieużyty"}</p>
-                  <div className="flex gap-2 mt-2">
-                    <Button size="sm" variant="outline" onClick={() => setUsedIngredientIds((prev) => prev.includes(selectedIngredientId) ? prev.filter((id) => id !== selectedIngredientId) : [...prev, selectedIngredientId])}>
-                      Oznacz jako {usedIngredientIds.includes(selectedIngredientId) ? "nieużyty" : "użyty"}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setSelectedIngredientId(null)}>Zamknij</Button>
-                  </div>
-                </div>
-              );
-            })()}
           </div>
         ) : (
         <div className="space-y-6">
@@ -389,12 +371,10 @@ export function RecipeView({
                     <li key={`step-${idx}`}>
                       {step.segments.map((segment: any, segmentIdx: number) => (
                         segment.type === "ingredient" ? (
-                          <button
-                            type="button"
+                          <span
                             key={`${segment.ingredientId}-${segmentIdx}`}
                             className="inline rounded-full bg-primary/10 text-primary px-2 py-0.5 mx-0.5"
-                            onClick={() => setSelectedIngredientId(Number(segment.ingredientId))}
-                          >{segment.text}</button>
+                          >{segment.text}</span>
                         ) : <span key={`${segment.text}-${segmentIdx}`}>{segment.text}</span>
                       ))}
                     </li>
