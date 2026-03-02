@@ -52,4 +52,42 @@ export async function ensureDbCompat() {
   await pool.query(`UPDATE recipes SET is_favorite = false WHERE is_favorite IS NULL`);
   await pool.query(`ALTER TABLE recipes ALTER COLUMN is_favorite SET NOT NULL`);
   await pool.query(`ALTER TABLE recipes ALTER COLUMN is_favorite SET DEFAULT false`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS shopping_list_extras (
+    id serial PRIMARY KEY,
+    name text NOT NULL,
+    amount real NOT NULL DEFAULT 1,
+    unit text NOT NULL DEFAULT 'szt',
+    category text NOT NULL DEFAULT 'Dodatkowe',
+    is_checked boolean NOT NULL DEFAULT false,
+    created_at timestamp DEFAULT now()
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS shopping_list_excluded_items (
+    ingredient_id integer PRIMARY KEY,
+    updated_at timestamp DEFAULT now()
+  )`);
+
+  await pool.query(`ALTER TABLE shopping_list_extras ADD COLUMN IF NOT EXISTS amount real DEFAULT 1`);
+  await pool.query(`UPDATE shopping_list_extras SET amount = 1 WHERE amount IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_extras ALTER COLUMN amount SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_extras ALTER COLUMN amount SET DEFAULT 1`);
+
+  await pool.query(`ALTER TABLE shopping_list_extras ADD COLUMN IF NOT EXISTS unit text DEFAULT 'szt'`);
+  await pool.query(`UPDATE shopping_list_extras SET unit = 'szt' WHERE unit IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_extras ALTER COLUMN unit SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_extras ALTER COLUMN unit SET DEFAULT 'szt'`);
+
+  await pool.query(`ALTER TABLE shopping_list_extras ADD COLUMN IF NOT EXISTS category text DEFAULT 'Dodatkowe'`);
+  await pool.query(`UPDATE shopping_list_extras SET category = 'Dodatkowe' WHERE category IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_extras ALTER COLUMN category SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_extras ALTER COLUMN category SET DEFAULT 'Dodatkowe'`);
+
+  await pool.query(`ALTER TABLE shopping_list_extras ADD COLUMN IF NOT EXISTS is_checked boolean DEFAULT false`);
+  await pool.query(`UPDATE shopping_list_extras SET is_checked = false WHERE is_checked IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_extras ALTER COLUMN is_checked SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_extras ALTER COLUMN is_checked SET DEFAULT false`);
+
+  await pool.query(`ALTER TABLE shopping_list_extras ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT now()`);
+
 }

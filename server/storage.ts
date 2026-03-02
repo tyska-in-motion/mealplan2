@@ -8,6 +8,8 @@ import {
   mealEntries,
   userSettings,
   shoppingListChecks,
+  shoppingListExtras,
+  shoppingListExcludedItems,
   mealEntryIngredients,
   type Ingredient,
   type Recipe,
@@ -49,6 +51,12 @@ export interface IStorage {
   // Shopping List Checks
   getShoppingListChecks(): Promise<Record<number, boolean>>;
   toggleShoppingListCheck(ingredientId: number, isChecked: boolean): Promise<void>;
+  getShoppingListExtras(): Promise<any[]>;
+  addShoppingListExtra(input: { name: string; amount?: number; unit?: string; category?: string }): Promise<any>;
+  deleteShoppingListExtra(id: number): Promise<void>;
+  toggleShoppingListExtraCheck(id: number, isChecked: boolean): Promise<void>;
+  getShoppingListExcludedItems(): Promise<number[]>;
+  setShoppingListExcludedItem(ingredientId: number, excluded: boolean): Promise<void>;
 
   // User Settings
   getUserSettings(): Promise<UserSettings>;
@@ -456,6 +464,49 @@ export class DatabaseStorage implements IStorage {
         target: shoppingListChecks.ingredientId,
         set: { isChecked, updatedAt: new Date() }
       });
+  }
+
+  async getShoppingListExtras(): Promise<any[]> {
+    return await db.select().from(shoppingListExtras);
+  }
+
+  async addShoppingListExtra(input: { name: string; amount?: number; unit?: string; category?: string }): Promise<any> {
+    const [created] = await db.insert(shoppingListExtras).values({
+      name: input.name,
+      amount: input.amount ?? 1,
+      unit: input.unit || "szt",
+      category: input.category || "Dodatkowe",
+    }).returning();
+    return created;
+  }
+
+  async deleteShoppingListExtra(id: number): Promise<void> {
+    await db.delete(shoppingListExtras).where(eq(shoppingListExtras.id, id));
+  }
+
+  async toggleShoppingListExtraCheck(id: number, isChecked: boolean): Promise<void> {
+    await db.update(shoppingListExtras)
+      .set({ isChecked })
+      .where(eq(shoppingListExtras.id, id));
+  }
+
+  async getShoppingListExcludedItems(): Promise<number[]> {
+    const rows = await db.select().from(shoppingListExcludedItems);
+    return rows.map((row) => row.ingredientId);
+  }
+
+  async setShoppingListExcludedItem(ingredientId: number, excluded: boolean): Promise<void> {
+    if (excluded) {
+      await db.insert(shoppingListExcludedItems)
+        .values({ ingredientId, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: shoppingListExcludedItems.ingredientId,
+          set: { updatedAt: new Date() }
+        });
+      return;
+    }
+
+    await db.delete(shoppingListExcludedItems).where(eq(shoppingListExcludedItems.ingredientId, ingredientId));
   }
 }
 
