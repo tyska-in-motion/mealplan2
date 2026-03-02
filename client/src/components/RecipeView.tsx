@@ -32,7 +32,23 @@ export function RecipeView({
   const [timerRemainingSeconds, setTimerRemainingSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  if (!recipe) return null;
+  const parseDurationFromStep = (step: string) => {
+    const explicitTimer = step.match(/\[timer\s*:\s*(\d+)\]/i);
+    if (explicitTimer) return Number(explicitTimer[1]);
+
+    const naturalLanguage = step.match(/(\d+)\s*(min|minut|minuty|minute|minutes)/i);
+    return naturalLanguage ? Number(naturalLanguage[1]) : 0;
+  };
+
+  const instructionSteps = useMemo(() => {
+    if (!recipe?.instructions) return [];
+
+    return recipe.instructions
+      .split(/\n+/)
+      .map((line: string) => line.trim())
+      .filter(Boolean)
+      .map((line: string) => line.replace(/^\d+[.)]\s*/, ""));
+  }, [recipe?.instructions]);
 
   const parseDurationFromStep = (step: string) => {
     const explicitTimer = step.match(/\[timer\s*:\s*(\d+)\]/i);
@@ -53,13 +69,13 @@ export function RecipeView({
   }, [recipe.instructions]);
 
   const isPlannedView = plannedServings !== undefined;
-  const recipeServings = Number(recipe.servings) || 1;
+  const recipeServings = Number(recipe?.servings) || 1;
   const servingsToUse = isPlannedView ? plannedServings : recipeServings;
   
   // Use entry-specific ingredients if provided (for Meal Plan/Dashboard view of a planned meal)
   const baseIngredients = (mealEntryIngredients && mealEntryIngredients.length > 0) 
     ? mealEntryIngredients 
-    : recipe.ingredients;
+    : (recipe?.ingredients || []);
 
   const frequentAddonSet = new Set((frequentAddonIds || []).map((id) => Number(id)));
 
@@ -122,14 +138,16 @@ export function RecipeView({
     return calculateScaledAmount(ri, servingsToUse, recipeServings);
   };
 
-  const baseCaloriesPerServing = Math.round((recipe.ingredients || []).reduce((sum: number, ri: any) =>
+  const baseCaloriesPerServing = Math.round((recipe?.ingredients || []).reduce((sum: number, ri: any) =>
     sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
   ) / recipeServings);
-  const withAddonsCaloriesPerServing = Math.round(((recipe.ingredients || []).reduce((sum: number, ri: any) =>
+  const withAddonsCaloriesPerServing = Math.round(((recipe?.ingredients || []).reduce((sum: number, ri: any) =>
     sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
-  ) + (recipe.frequentAddons || []).reduce((sum: number, addon: any) =>
+  ) + (recipe?.frequentAddons || []).reduce((sum: number, addon: any) =>
     sum + (addon.ingredient ? (addon.ingredient.calories * addon.amount / 100) : 0), 0
   )) / recipeServings);
+
+  if (!recipe) return null;
 
   return (
     <Dialog
