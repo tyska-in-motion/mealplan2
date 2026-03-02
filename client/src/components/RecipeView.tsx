@@ -144,31 +144,31 @@ export function RecipeView({
         }
       }}
     >
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white">
+      <DialogContent className={isCookingMode ? "max-w-3xl h-[92vh] overflow-hidden bg-white p-3 sm:p-4" : "max-w-3xl max-h-[90vh] overflow-y-auto bg-white"}>
         {isCookingMode ? (
-          <div className="space-y-6">
+          <div className="h-full flex flex-col gap-3">
             <DialogHeader>
               <DialogTitle className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2"><ChefHatIcon className="w-5 h-5" /> Tryb gotowania</span>
-                <Button variant="outline" onClick={() => setIsCookingMode(false)}>Wyjdź</Button>
+                <span className="flex items-center gap-2 text-base sm:text-lg"><ChefHatIcon className="w-4 h-4 sm:w-5 sm:h-5" /> Tryb gotowania</span>
+                <Button size="sm" variant="outline" onClick={() => setIsCookingMode(false)}>Wyjdź</Button>
               </DialogTitle>
             </DialogHeader>
 
-            <div className="rounded-2xl bg-secondary/30 p-6 text-center space-y-4">
-              <p className="text-sm text-muted-foreground">Krok {Math.min(currentStepIndex + 1, instructionSteps.length)} / {instructionSteps.length || 1}</p>
-              <p className="text-2xl sm:text-3xl font-bold leading-snug">
+            <div className="rounded-2xl bg-secondary/30 p-3 sm:p-4 text-center space-y-2">
+              <p className="text-xs sm:text-sm text-muted-foreground">Krok {Math.min(currentStepIndex + 1, instructionSteps.length)} / {instructionSteps.length || 1}</p>
+              <p className="text-lg sm:text-2xl font-bold leading-snug">
                 {currentStepText || "Brak kroków. Dodaj instrukcje do przepisu."}
               </p>
               {currentStepDurationMinutes > 0 && (
-                <p className="text-sm text-muted-foreground">Wykryto timer: {currentStepDurationMinutes} min</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Wykryto timer: {currentStepDurationMinutes} min</p>
               )}
             </div>
 
-            <div className="rounded-2xl border p-6 space-y-4">
-              <p className="text-4xl font-bold text-center tabular-nums">{formatTime(timerRemainingSeconds)}</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-2xl border p-3 sm:p-4 space-y-2">
+              <p className="text-3xl sm:text-4xl font-bold text-center tabular-nums">{formatTime(timerRemainingSeconds)}</p>
+              <div className="grid grid-cols-3 gap-2">
                 <Button
-                  className="h-14 text-lg"
+                  className="h-11 sm:h-12 text-sm sm:text-base"
                   onClick={() => {
                     if (timerRemainingSeconds === 0 && currentStepDurationMinutes > 0) {
                       setTimerRemainingSeconds(currentStepDurationMinutes * 60);
@@ -182,7 +182,7 @@ export function RecipeView({
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-14 text-lg"
+                  className="h-11 sm:h-12 text-sm sm:text-base"
                   onClick={() => {
                     setIsTimerRunning(false);
                     setTimerRemainingSeconds(currentStepDurationMinutes * 60);
@@ -194,7 +194,7 @@ export function RecipeView({
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-14 text-lg"
+                  className="h-11 sm:h-12 text-sm sm:text-base"
                   onClick={() => {
                     setIsTimerRunning(false);
                     setTimerRemainingSeconds(0);
@@ -206,7 +206,7 @@ export function RecipeView({
             </div>
 
             <Button
-              className="w-full h-16 text-2xl font-bold"
+              className="w-full h-12 sm:h-14 text-base sm:text-xl font-bold mt-auto"
               onClick={() => {
                 const nextIndex = Math.min(currentStepIndex + 1, Math.max(instructionSteps.length - 1, 0));
                 setCurrentStepIndex(nextIndex);
@@ -348,9 +348,15 @@ export function RecipeView({
             </div>
             <div>
               <h3 className="text-lg font-bold mb-3">Instrukcje</h3>
-              <p className="whitespace-pre-wrap text-muted-foreground leading-relaxed">
-                {recipe.instructions || "Brak instrukcji."}
-              </p>
+              {instructionSteps.length > 0 ? (
+                <ol className="list-decimal pl-5 space-y-1 text-muted-foreground leading-relaxed">
+                  {instructionSteps.map((step: string, idx: number) => (
+                    <li key={`${step}-${idx}`}>{step}</li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="whitespace-pre-wrap text-muted-foreground leading-relaxed">Brak instrukcji.</p>
+              )}
               {instructionSteps.length > 0 && (
                 <Button className="mt-4" onClick={() => {
                   setCurrentStepIndex(0);

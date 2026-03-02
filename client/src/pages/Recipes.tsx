@@ -79,23 +79,6 @@ export default function Recipes() {
   const [sortBy, setSortBy] = useState<string>("frequency");
   const [manualAvailableIngredientIds, setManualAvailableIngredientIds] = useState<number[]>([]);
   const [excludedDefaultIngredientIds, setExcludedDefaultIngredientIds] = useState<number[]>([]);
-  const [cookingSteps, setCookingSteps] = useState<Array<{ text: string; timerMinutes?: number }>>([]);
-
-  const parseInstructionsToSteps = (instructions?: string) => {
-    if (!instructions) return [];
-    return instructions
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const stripped = line.replace(/^\d+[.)]\s*/, "");
-        const timerMatch = stripped.match(/\[timer\s*:\s*(\d+)\]/i);
-        return {
-          text: stripped.replace(/\[timer\s*:\s*\d+\]/gi, "").trim(),
-          timerMinutes: timerMatch ? Number(timerMatch[1]) : undefined,
-        };
-      });
-  };
 
   const allTags = Array.from(new Set(recipes?.flatMap(r => r.tags || []) || [])) as string[];
 
@@ -382,7 +365,6 @@ export default function Recipes() {
         amount: Number(addon.baseAmount ?? addon.amount ?? 0),
       })),
     });
-    setCookingSteps(parseInstructionsToSteps(recipe.instructions));
     setIsOpen(true);
   };
 
@@ -400,7 +382,6 @@ export default function Recipes() {
       ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
       frequentAddons: [],
     });
-    setCookingSteps([]);
   };
 
   const { mutate: createRecipeMutation, isPending: isCreating } = useCreateRecipe();
@@ -442,16 +423,8 @@ export default function Recipes() {
   };
 
   const onSubmit = (data: any) => {
-    const normalizedInstructions = cookingSteps.length > 0
-      ? cookingSteps
-          .filter((step) => step.text.trim() !== "")
-          .map((step, index) => `${index + 1}. ${step.text.trim()}${step.timerMinutes && step.timerMinutes > 0 ? ` [timer:${step.timerMinutes}]` : ""}`)
-          .join("\n")
-      : data.instructions;
-
     const normalizedData = {
       ...data,
-      instructions: normalizedInstructions,
       ingredients: (data.ingredients || []).map((ingredient: any) => ({
         ...ingredient,
         baseAmount: Number(ingredient.baseAmount ?? ingredient.amount ?? 0),
@@ -774,48 +747,14 @@ export default function Recipes() {
                 </Button>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">Kroki gotowania (cooking mode)</label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCookingSteps((prev) => [...prev, { text: "", timerMinutes: undefined }])}
-                  >
-                    + Dodaj krok
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {cookingSteps.map((step, index) => (
-                    <div key={index} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_auto] gap-2">
-                      <Input
-                        placeholder={`Krok ${index + 1}`}
-                        value={step.text}
-                        onChange={(e) => setCookingSteps((prev) => prev.map((s, i) => i === index ? { ...s, text: e.target.value } : s))}
-                      />
-                      <Input
-                        type="number"
-                        min="0"
-                        placeholder="Timer (min)"
-                        value={step.timerMinutes ?? ""}
-                        onChange={(e) => setCookingSteps((prev) => prev.map((s, i) => i === index ? { ...s, timerMinutes: e.target.value ? Number(e.target.value) : undefined } : s))}
-                      />
-                      <Button type="button" variant="ghost" onClick={() => setCookingSteps((prev) => prev.filter((_, i) => i !== index))}>
-                        Usuń
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               <div>
-                <label className="text-sm font-medium mb-1 block">Instrukcje</label>
+                <label className="text-sm font-medium mb-1 block">Kroki wykonania (1 krok w linii)</label>
                 <textarea 
                   {...form.register("instructions")} 
-                  className="w-full min-h-[100px] p-3 rounded-xl border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring" 
-                  placeholder="Krok 1..." 
+                  className="w-full min-h-[140px] p-3 rounded-xl border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring" 
+                  placeholder={"1. Pokrój warzywa\n2. Smaż 8 minut [timer:8]\n3. Dopraw i podaj"}
                 />
+                <p className="text-xs text-muted-foreground mt-1">To samo pole zasila widok instrukcji i cooking mode. Opcjonalny timer dodasz jako [timer:liczba].</p>
               </div>
 
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 sm:pt-4">
