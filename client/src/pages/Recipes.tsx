@@ -76,6 +76,23 @@ export default function Recipes() {
   const [selectedTag, setSelectedTag] = useState<string>("all");
   const [favoriteFilter, setFavoriteFilter] = useState<"all" | "favorites">("all");
   const [sortBy, setSortBy] = useState<string>("frequency");
+  const [cookingSteps, setCookingSteps] = useState<Array<{ text: string; timerMinutes?: number }>>([]);
+
+  const parseInstructionsToSteps = (instructions?: string) => {
+    if (!instructions) return [];
+    return instructions
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const stripped = line.replace(/^\d+[.)]\s*/, "");
+        const timerMatch = stripped.match(/\[timer\s*:\s*(\d+)\]/i);
+        return {
+          text: stripped.replace(/\[timer\s*:\s*\d+\]/gi, "").trim(),
+          timerMinutes: timerMatch ? Number(timerMatch[1]) : undefined,
+        };
+      });
+  };
 
   const allTags = Array.from(new Set(recipes?.flatMap(r => r.tags || []) || [])) as string[];
 
@@ -323,6 +340,7 @@ export default function Recipes() {
         amount: Number(addon.baseAmount ?? addon.amount ?? 0),
       })),
     });
+    setCookingSteps(parseInstructionsToSteps(recipe.instructions));
     setIsOpen(true);
   };
 
@@ -340,6 +358,7 @@ export default function Recipes() {
       ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
       frequentAddons: [],
     });
+    setCookingSteps([]);
   };
 
   const { mutate: createRecipeMutation, isPending: isCreating } = useCreateRecipe();
@@ -381,8 +400,16 @@ export default function Recipes() {
   };
 
   const onSubmit = (data: any) => {
+    const normalizedInstructions = cookingSteps.length > 0
+      ? cookingSteps
+          .filter((step) => step.text.trim() !== "")
+          .map((step, index) => `${index + 1}. ${step.text.trim()}${step.timerMinutes && step.timerMinutes > 0 ? ` [timer:${step.timerMinutes}]` : ""}`)
+          .join("\n")
+      : data.instructions;
+
     const normalizedData = {
       ...data,
+      instructions: normalizedInstructions,
       ingredients: (data.ingredients || []).map((ingredient: any) => ({
         ...ingredient,
         baseAmount: Number(ingredient.baseAmount ?? ingredient.amount ?? 0),
@@ -703,6 +730,41 @@ export default function Recipes() {
                 <Button type="button" variant="outline" size="sm" className="rounded-lg border-dashed w-full py-3 sm:py-5 border-2 hover:bg-emerald-50 hover:border-emerald-300 transition-all text-xs sm:text-sm" onClick={() => appendFrequentAddon({ ingredientId: 0, amount: 50 })}>
                   + Dodaj najczęsty dodatek
                 </Button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Kroki gotowania (cooking mode)</label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCookingSteps((prev) => [...prev, { text: "", timerMinutes: undefined }])}
+                  >
+                    + Dodaj krok
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {cookingSteps.map((step, index) => (
+                    <div key={index} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_auto] gap-2">
+                      <Input
+                        placeholder={`Krok ${index + 1}`}
+                        value={step.text}
+                        onChange={(e) => setCookingSteps((prev) => prev.map((s, i) => i === index ? { ...s, text: e.target.value } : s))}
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="Timer (min)"
+                        value={step.timerMinutes ?? ""}
+                        onChange={(e) => setCookingSteps((prev) => prev.map((s, i) => i === index ? { ...s, timerMinutes: e.target.value ? Number(e.target.value) : undefined } : s))}
+                      />
+                      <Button type="button" variant="ghost" onClick={() => setCookingSteps((prev) => prev.filter((_, i) => i !== index))}>
+                        Usuń
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div>
