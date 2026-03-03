@@ -153,7 +153,7 @@ export async function registerRoutes(
   app.post(api.ai.generateRecipe.path, async (req, res) => {
     try {
       const input = api.ai.generateRecipe.input.parse(req.body);
-      const pantryTokens = normalizePantryTokens(input.pantry);
+      const pantryTokens = normalizePantryTokens(`${input.pantry} ${input.extraPantry ?? ""}`);
       const allIngredients = await storage.getIngredients();
 
       const matchedIngredients = allIngredients
@@ -166,7 +166,7 @@ export async function registerRoutes(
           const proteinDensityB = (Number(b.protein) || 0) - (Number(b.fat) || 0) * 0.25;
           return proteinDensityB - proteinDensityA;
         })
-        .slice(0, 8);
+        .slice(0, 10);
 
       if (matchedIngredients.length === 0) {
         return res.status(400).json({
@@ -174,11 +174,14 @@ export async function registerRoutes(
         });
       }
 
-      const weightPerIngredient = Math.max(40, Math.round(input.targetCalories / (matchedIngredients.length * 2)));
+      const caloriesTarget = input.targetCaloriesPerServing * input.servings;
+      const totalCaloriesPer100 = matchedIngredients.reduce((acc, ingredient) => acc + (Number(ingredient.calories) || 0), 0);
+      const scalingFactor = totalCaloriesPer100 > 0 ? caloriesTarget / totalCaloriesPer100 : 1;
 
       const calculatedIngredients = matchedIngredients.map((ingredient) => {
-        const amount = ingredient.unit === "ml" ? Math.round(weightPerIngredient * 0.7) : weightPerIngredient;
-        const multiplier = amount / 100;
+        const rawAmount = (ingredient.unit === "szt" ? 100 : 100) * scalingFactor;
+        const amount = ingredient.unit === "szt" ? Math.max(1, Math.round(rawAmount)) : Math.max(5, Math.round(rawAmount));
+        const multiplier = ingredient.unit === "szt" ? amount : amount / 100;
 
         const calories = (Number(ingredient.calories) || 0) * multiplier;
         const protein = (Number(ingredient.protein) || 0) * multiplier;
@@ -211,21 +214,29 @@ export async function registerRoutes(
         { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 },
       );
 
+      const missingIngredients = pantryTokens.length <= 2
+        ? ["Przyprawy (sól, pieprz)", "Źródło tłuszczu do smażenia"]
+        : [];
+
       const instructions = [
-        "Przygotuj wszystkie składniki i pokrój je na mniejsze kawałki.",
-        "Podsmaż składniki wymagające obróbki termicznej przez 6-10 minut na średnim ogniu.",
-        "Dodaj pozostałe składniki i dopraw do smaku. W razie potrzeby dolej odrobinę wody.",
-        "Gotuj lub duś całość jeszcze 5-8 minut, aż składniki będą miękkie i aromatyczne.",
-        "Podawaj od razu. Możesz podzielić danie na 1-2 porcje.",
+        "Przygotuj i odmierz wszystkie składniki zgodnie z gramaturą.",
+        "Podsmaż lub ugotuj bazę białkową przez 6-10 minut.",
+        "Dodaj składniki węglowodanowe i warzywa, dopraw oraz duś 5-8 minut.",
+        `Podziel gotowe danie na dokładnie ${input.servings} porcji.`,
+        `Jedna porcja ma około ${toRounded(totals.calories / input.servings)} kcal (cel: ${input.targetCaloriesPerServing} kcal).`,
       ];
 
       res.json({
         title: "Przepis AI na bazie Twojej spiżarni",
-        summary: `Dopasowano ${calculatedIngredients.length} składników do celu ${Math.round(input.targetCalories)} kcal.`,
+        summary: `Przepis oparty wyłącznie o znalezione składniki. Łącznie ${toRounded(totals.calories)} kcal na ${input.servings} porcji.`,
+        followUpQuestion: "Czy masz jeszcze przyprawy, źródło tłuszczu do smażenia albo warzywo do zwiększenia objętości posiłku?",
+        missingIngredients,
         instructions,
         ingredients: calculatedIngredients,
         totals: {
           calories: toRounded(totals.calories),
+          caloriesPerServing: toRounded(totals.calories / input.servings),
+          servings: input.servings,
           protein: toRounded(totals.protein),
           carbs: toRounded(totals.carbs),
           fat: toRounded(totals.fat),
@@ -696,7 +707,7 @@ export async function registerRoutes(
   app.post(api.ai.generateRecipe.path, async (req, res) => {
     try {
       const input = api.ai.generateRecipe.input.parse(req.body);
-      const pantryTokens = normalizePantryTokens(input.pantry);
+      const pantryTokens = normalizePantryTokens(`${input.pantry} ${input.extraPantry ?? ""}`);
       const allIngredients = await storage.getIngredients();
 
       const matchedIngredients = allIngredients
@@ -709,7 +720,7 @@ export async function registerRoutes(
           const proteinDensityB = (Number(b.protein) || 0) - (Number(b.fat) || 0) * 0.25;
           return proteinDensityB - proteinDensityA;
         })
-        .slice(0, 8);
+        .slice(0, 10);
 
       if (matchedIngredients.length === 0) {
         return res.status(400).json({
@@ -717,11 +728,14 @@ export async function registerRoutes(
         });
       }
 
-      const weightPerIngredient = Math.max(40, Math.round(input.targetCalories / (matchedIngredients.length * 2)));
+      const caloriesTarget = input.targetCaloriesPerServing * input.servings;
+      const totalCaloriesPer100 = matchedIngredients.reduce((acc, ingredient) => acc + (Number(ingredient.calories) || 0), 0);
+      const scalingFactor = totalCaloriesPer100 > 0 ? caloriesTarget / totalCaloriesPer100 : 1;
 
       const calculatedIngredients = matchedIngredients.map((ingredient) => {
-        const amount = ingredient.unit === "ml" ? Math.round(weightPerIngredient * 0.7) : weightPerIngredient;
-        const multiplier = amount / 100;
+        const rawAmount = (ingredient.unit === "szt" ? 100 : 100) * scalingFactor;
+        const amount = ingredient.unit === "szt" ? Math.max(1, Math.round(rawAmount)) : Math.max(5, Math.round(rawAmount));
+        const multiplier = ingredient.unit === "szt" ? amount : amount / 100;
 
         const calories = (Number(ingredient.calories) || 0) * multiplier;
         const protein = (Number(ingredient.protein) || 0) * multiplier;
@@ -754,21 +768,29 @@ export async function registerRoutes(
         { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 },
       );
 
+      const missingIngredients = pantryTokens.length <= 2
+        ? ["Przyprawy (sól, pieprz)", "Źródło tłuszczu do smażenia"]
+        : [];
+
       const instructions = [
-        "Przygotuj wszystkie składniki i pokrój je na mniejsze kawałki.",
-        "Podsmaż składniki wymagające obróbki termicznej przez 6-10 minut na średnim ogniu.",
-        "Dodaj pozostałe składniki i dopraw do smaku. W razie potrzeby dolej odrobinę wody.",
-        "Gotuj lub duś całość jeszcze 5-8 minut, aż składniki będą miękkie i aromatyczne.",
-        "Podawaj od razu. Możesz podzielić danie na 1-2 porcje.",
+        "Przygotuj i odmierz wszystkie składniki zgodnie z gramaturą.",
+        "Podsmaż lub ugotuj bazę białkową przez 6-10 minut.",
+        "Dodaj składniki węglowodanowe i warzywa, dopraw oraz duś 5-8 minut.",
+        `Podziel gotowe danie na dokładnie ${input.servings} porcji.`,
+        `Jedna porcja ma około ${toRounded(totals.calories / input.servings)} kcal (cel: ${input.targetCaloriesPerServing} kcal).`,
       ];
 
       res.json({
         title: "Przepis AI na bazie Twojej spiżarni",
-        summary: `Dopasowano ${calculatedIngredients.length} składników do celu ${Math.round(input.targetCalories)} kcal.`,
+        summary: `Przepis oparty wyłącznie o znalezione składniki. Łącznie ${toRounded(totals.calories)} kcal na ${input.servings} porcji.`,
+        followUpQuestion: "Czy masz jeszcze przyprawy, źródło tłuszczu do smażenia albo warzywo do zwiększenia objętości posiłku?",
+        missingIngredients,
         instructions,
         ingredients: calculatedIngredients,
         totals: {
           calories: toRounded(totals.calories),
+          caloriesPerServing: toRounded(totals.calories / input.servings),
+          servings: input.servings,
           protein: toRounded(totals.protein),
           carbs: toRounded(totals.carbs),
           fat: toRounded(totals.fat),

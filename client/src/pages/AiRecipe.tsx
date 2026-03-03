@@ -12,6 +12,8 @@ import { api } from "@shared/routes";
 type AiRecipeResponse = {
   title: string;
   summary: string;
+  followUpQuestion: string;
+  missingIngredients: string[];
   instructions: string[];
   ingredients: {
     ingredientId: number;
@@ -26,6 +28,8 @@ type AiRecipeResponse = {
   }[];
   totals: {
     calories: number;
+    caloriesPerServing: number;
+    servings: number;
     protein: number;
     carbs: number;
     fat: number;
@@ -35,7 +39,9 @@ type AiRecipeResponse = {
 
 export default function AiRecipe() {
   const [pantry, setPantry] = useState("");
-  const [targetCalories, setTargetCalories] = useState("700");
+  const [servings, setServings] = useState("2");
+  const [targetCaloriesPerServing, setTargetCaloriesPerServing] = useState("700");
+  const [extraPantry, setExtraPantry] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<AiRecipeResponse | null>(null);
   const { toast } = useToast();
@@ -47,7 +53,9 @@ export default function AiRecipe() {
     try {
       const payload = {
         pantry,
-        targetCalories: Number(targetCalories),
+        servings: Number(servings),
+        targetCaloriesPerServing: Number(targetCaloriesPerServing),
+        extraPantry: extraPantry || undefined,
       };
 
       const parsed = api.ai.generateRecipe.input.parse(payload);
@@ -81,7 +89,7 @@ export default function AiRecipe() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">AI Chef</h1>
-          <p className="text-muted-foreground">Wpisz, co masz w domu i cel kcal, a system zaproponuje przepis na bazie składników z zakładki Ingredients.</p>
+          <p className="text-muted-foreground">AI Chef tworzy przepis wyłącznie na bazie składników które masz, pyta o brakujące rzeczy i dopasowuje dokładnie porcje oraz kcal na porcję.</p>
         </div>
 
         <Card>
@@ -100,14 +108,39 @@ export default function AiRecipe() {
               />
             </div>
 
-            <div className="space-y-2 max-w-xs">
-              <Label htmlFor="kcal">Oczekiwana ilość kalorii</Label>
-              <Input
-                id="kcal"
-                type="number"
-                min={100}
-                value={targetCalories}
-                onChange={(e) => setTargetCalories(e.target.value)}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="servings">Liczba porcji</Label>
+                <Input
+                  id="servings"
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={servings}
+                  onChange={(e) => setServings(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="kcal">Kcal na porcję</Label>
+                <Input
+                  id="kcal"
+                  type="number"
+                  min={100}
+                  value={targetCaloriesPerServing}
+                  onChange={(e) => setTargetCaloriesPerServing(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="extra">Co masz jeszcze? (opcjonalnie)</Label>
+              <Textarea
+                id="extra"
+                placeholder="np. czosnek, cebula, passata, przyprawy"
+                value={extraPantry}
+                onChange={(e) => setExtraPantry(e.target.value)}
+                rows={2}
               />
             </div>
 
@@ -122,6 +155,10 @@ export default function AiRecipe() {
             <CardHeader>
               <CardTitle>{result.title}</CardTitle>
               <p className="text-sm text-muted-foreground">{result.summary}</p>
+              <p className="text-sm">{result.followUpQuestion}</p>
+              {result.missingIngredients.length > 0 && (
+                <p className="text-xs text-muted-foreground">Brakujące / sugerowane dodatki: {result.missingIngredients.join(", ")}</p>
+              )}
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
@@ -141,7 +178,7 @@ export default function AiRecipe() {
               <div className="rounded-xl bg-muted p-4 text-sm">
                 <p className="font-semibold mb-1">Suma</p>
                 <p>
-                  {result.totals.calories} kcal | B: {result.totals.protein} g | W: {result.totals.carbs} g | T: {result.totals.fat} g | koszt: {result.totals.cost.toFixed(2)}
+                  {result.totals.calories} kcal łącznie ({result.totals.caloriesPerServing} kcal / porcja, porcji: {result.totals.servings}) | B: {result.totals.protein} g | W: {result.totals.carbs} g | T: {result.totals.fat} g | koszt: {result.totals.cost.toFixed(2)}
                 </p>
               </div>
 
