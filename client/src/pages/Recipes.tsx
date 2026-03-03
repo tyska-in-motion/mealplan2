@@ -49,6 +49,8 @@ const createRecipeSchema = z.object({
     amount: z.coerce.number().min(0),
     baseAmount: z.coerce.number().min(0).optional(),
     unit: z.string().min(1).default("g"),
+    alternativeAmount: z.coerce.number().min(0).optional(),
+    alternativeUnit: z.string().optional(),
     scalingType: z.enum(["LINEAR", "FIXED", "STEP", "FORMULA"]).default("LINEAR"),
     scalingFormula: z.string().optional(),
     stepThresholds: z.array(z.object({
@@ -95,6 +97,13 @@ export default function Recipes() {
   function getIngredientAmount(ri: any) {
     return Number(ri?.baseAmount ?? ri?.amount ?? 0);
   }
+
+  const formatLocalizedNumber = (value: number) => {
+    if (!Number.isFinite(value)) return "0";
+    const rounded = Math.round(value * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",");
+  };
+
 
   const alwaysAtHomeIngredientIds = useMemo(() =>
     (availableIngredients || [])
@@ -298,7 +307,7 @@ export default function Recipes() {
       prepTime: 15,
       servings: 1,
       imageUrl: "",
-      ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
+      ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", alternativeAmount: undefined, alternativeUnit: "", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
       frequentAddons: [] as { ingredientId: number; amount: number }[],
     },
   });
@@ -402,6 +411,8 @@ export default function Recipes() {
         amount: Number(ri.baseAmount ?? ri.amount ?? 0),
         baseAmount: Number(ri.baseAmount ?? ri.amount ?? 0),
         unit: ri.unit || ri.ingredient?.unit || "g",
+        alternativeAmount: Number(ri.alternativeAmount) || undefined,
+        alternativeUnit: ri.alternativeUnit || "",
         scalingType: ri.scalingType || "LINEAR",
         scalingFormula: ri.scalingFormula || "",
         stepThresholds: ri.stepThresholds || [],
@@ -443,7 +454,7 @@ export default function Recipes() {
       prepTime: 15,
       servings: 1,
       imageUrl: "",
-      ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
+      ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", alternativeAmount: undefined, alternativeUnit: "", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
       frequentAddons: [],
     });
     setInstructionLinks([]);
@@ -469,6 +480,8 @@ export default function Recipes() {
         amount: Number(ri.baseAmount ?? ri.amount ?? 0),
         baseAmount: Number(ri.baseAmount ?? ri.amount ?? 0),
         unit: ri.unit || ri.ingredient?.unit || "g",
+        alternativeAmount: Number(ri.alternativeAmount) || undefined,
+        alternativeUnit: ri.alternativeUnit || undefined,
         scalingType: (ri.scalingType || "LINEAR") as ScalingType,
         scalingFormula: ri.scalingType === "FORMULA" ? ri.scalingFormula : undefined,
         stepThresholds: ri.scalingType === "STEP" ? (ri.stepThresholds || []) : undefined,
@@ -499,6 +512,8 @@ export default function Recipes() {
         baseAmount: Number(ingredient.baseAmount ?? ingredient.amount ?? 0),
         amount: Number(ingredient.baseAmount ?? ingredient.amount ?? 0),
         unit: ingredient.unit || "g",
+        alternativeAmount: Number(ingredient.alternativeAmount) > 0 ? Number(ingredient.alternativeAmount) : undefined,
+        alternativeUnit: ingredient.alternativeUnit?.trim() ? ingredient.alternativeUnit.trim() : undefined,
         scalingType: (ingredient.scalingType || "LINEAR") as ScalingType,
         scalingFormula: ingredient.scalingType === "FORMULA" ? ingredient.scalingFormula : undefined,
         stepThresholds: ingredient.scalingType === "STEP" ? (ingredient.stepThresholds || []) : undefined,
@@ -691,6 +706,12 @@ export default function Recipes() {
                           <div className="w-full sm:w-24">
                             <Input placeholder="Jedn." className="h-9 rounded-lg" {...form.register(`ingredients.${index}.unit` as const)} />
                           </div>
+                          <div className="w-full sm:w-24">
+                            <Input type="number" step="0.01" placeholder="np. 1" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.alternativeAmount` as const)} />
+                          </div>
+                          <div className="w-full sm:w-32">
+                            <Input placeholder="np. sztuka" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.alternativeUnit` as const)} />
+                          </div>
                           <div className="w-full sm:w-36">
                             <Select
                               value={form.watch(`ingredients.${index}.scalingType`) || "LINEAR"}
@@ -709,6 +730,22 @@ export default function Recipes() {
                             <X className="w-4 h-4" />
                           </Button>
                         </div>
+                        {(() => {
+                          const selectedIngredient = (availableIngredients || []).find((i: any) => i.id === selectedId);
+                          const baseAmount = Number(form.watch(`ingredients.${index}.baseAmount`)) || 0;
+                          const alternativeAmount = Number(form.watch(`ingredients.${index}.alternativeAmount`)) || 0;
+                          const alternativeUnit = form.watch(`ingredients.${index}.alternativeUnit`) || "";
+                          if (alternativeAmount <= 0 || !alternativeUnit.trim()) return null;
+                          const gramsPerAlt = baseAmount > 0 ? baseAmount / alternativeAmount : 0;
+
+                          return (
+                            <p className="mt-2 text-[10px] text-muted-foreground">
+                              Podgląd: {formatLocalizedNumber(alternativeAmount)} {alternativeUnit} = {formatLocalizedNumber(baseAmount)}g
+                              {gramsPerAlt > 0 ? ` (1 ${alternativeUnit} = ${formatLocalizedNumber(gramsPerAlt)}g)` : ""}
+                              {selectedIngredient?.unitWeight ? ` · baza składnika: 1 szt ≈ ${formatLocalizedNumber(Number(selectedIngredient.unitWeight))}g` : ""}
+                            </p>
+                          );
+                        })()}
                         {form.watch(`ingredients.${index}.scalingType`) === "FORMULA" && (
                           <div className="mt-2">
                             <Input placeholder="np. 100 + (scaleFactor - 1) * 50" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.scalingFormula` as const)} />
@@ -737,7 +774,7 @@ export default function Recipes() {
                     );
                   })}
                 </div>
-                <Button type="button" variant="outline" size="sm" className="rounded-lg border-dashed w-full py-3 sm:py-5 border-2 hover:bg-primary/5 hover:border-primary/50 transition-all text-xs sm:text-sm" onClick={() => append({ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] })}>
+                <Button type="button" variant="outline" size="sm" className="rounded-lg border-dashed w-full py-3 sm:py-5 border-2 hover:bg-primary/5 hover:border-primary/50 transition-all text-xs sm:text-sm" onClick={() => append({ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", alternativeAmount: undefined, alternativeUnit: "", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] })}>
                   + Dodaj kolejny składnik
                 </Button>
                 {form.formState.errors.ingredients && <p className="text-red-500 text-xs mt-1">{form.formState.errors.ingredients.message}</p>}

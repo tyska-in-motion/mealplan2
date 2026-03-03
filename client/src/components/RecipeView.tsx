@@ -121,6 +121,25 @@ export function RecipeView({
     return calculateScaledAmount(ri, servingsToUse, recipeServings);
   };
 
+  const formatAmount = (value: number) => {
+    if (!Number.isFinite(value)) return "0";
+    const rounded = Math.round(value * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",");
+  };
+
+  const getIngredientAmountLabel = (ri: any) => {
+    const grams = getScaledAmount(ri);
+    const altAmountRaw = Number(ri?.alternativeAmount);
+    const altUnit = (ri?.alternativeUnit || "").trim();
+
+    if (altAmountRaw > 0 && altUnit) {
+      const scaledAlternativeAmount = (altAmountRaw * grams) / ((Number(ri?.baseAmount) || Number(ri?.amount) || grams) || 1);
+      return `${formatAmount(scaledAlternativeAmount)} ${altUnit} (${formatAmount(grams)}${ri.unit || "g"})`;
+    }
+
+    return `${formatAmount(grams)}${ri.unit || "g"}`;
+  };
+
   const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number; ingredientIds?: number[]; multiplier?: number }) => {
     const multiplier = typeof segment.multiplier === "number" && segment.multiplier > 0 ? segment.multiplier : 1;
     const ingredientIds = (segment.ingredientIds && segment.ingredientIds.length > 0)
@@ -359,7 +378,7 @@ export function RecipeView({
                         )}
                       </span>
                       <span className="font-medium">
-                        {Math.round(getScaledAmount(ri))}{ri.unit || "g"}
+                        {getIngredientAmountLabel(ri)}
                       </span>
                     </div>
                     {Number(ri.ingredient?.unitWeight || 0) > 0 && (
