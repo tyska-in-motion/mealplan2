@@ -49,6 +49,42 @@ const instructionStepSchema = z.object({
 });
 
 export const api = {
+  ai: {
+    generateRecipe: {
+      method: 'POST' as const,
+      path: '/api/ai/recipe',
+      input: z.object({
+        pantry: z.string().min(1),
+        targetCalories: z.number().min(100).max(6000),
+      }),
+      responses: {
+        200: z.object({
+          title: z.string(),
+          summary: z.string(),
+          instructions: z.array(z.string()),
+          ingredients: z.array(z.object({
+            ingredientId: z.number(),
+            name: z.string(),
+            amount: z.number(),
+            unit: z.string(),
+            calories: z.number(),
+            protein: z.number(),
+            carbs: z.number(),
+            fat: z.number(),
+            cost: z.number(),
+          })),
+          totals: z.object({
+            calories: z.number(),
+            protein: z.number(),
+            carbs: z.number(),
+            fat: z.number(),
+            cost: z.number(),
+          }),
+        }),
+        400: errorSchemas.validation,
+      },
+    },
+  },
   ingredients: {
     list: {
       method: 'GET' as const,
