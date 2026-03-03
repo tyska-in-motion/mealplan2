@@ -559,7 +559,7 @@ export default function Recipes() {
               <Plus className="w-5 h-5" /> Stwórz przepis
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto px-2 py-3 sm:max-h-[90vh] sm:px-6 sm:py-6 max-sm:h-[92dvh] max-sm:w-[95vw] max-sm:max-w-[95vw]">
+          <DialogContent className="w-[calc(100vw-1rem)] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden px-2 py-3 sm:max-h-[90vh] sm:px-6 sm:py-6 max-sm:h-[92dvh] max-sm:w-[95vw] max-sm:max-w-[95vw]">
             <DialogHeader>
               <DialogTitle className="text-lg sm:text-2xl font-display">{editingRecipe ? "Edytuj przepis" : "Nowy przepis"}</DialogTitle>
             </DialogHeader>
@@ -645,7 +645,7 @@ export default function Recipes() {
                     const selectedId = Number(form.watch(`ingredients.${index}.ingredientId`));
                     return (
                       <div key={field.id} className="bg-secondary/20 p-2 rounded-xl border border-border/50">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                        <div className="flex flex-col gap-2 lg:flex-row lg:items-end">
                           <div className="flex-1">
                             <Popover>
                               <PopoverTrigger asChild>
@@ -700,21 +700,21 @@ export default function Recipes() {
                               </PopoverContent>
                             </Popover>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-1 sm:gap-2">
-                            <div className="col-span-1 sm:w-24">
+                          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:flex lg:flex-1 lg:gap-2">
+                            <div className="col-span-1 lg:w-24">
                               <Input type="number" placeholder="Bazowa" className="h-8 rounded-lg px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" {...form.register(`ingredients.${index}.baseAmount` as const)} />
                             </div>
-                            <div className="col-span-1 sm:w-24">
+                            <div className="col-span-1 lg:w-24">
                               <Input placeholder="Jedn." className="h-8 rounded-lg px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" {...form.register(`ingredients.${index}.unit` as const)} />
                             </div>
-                            <div className="col-span-1 sm:w-24">
+                            <div className="col-span-1 lg:w-24">
                               <Input type="number" step="0.01" placeholder="np. 1" className="h-8 rounded-lg px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" {...form.register(`ingredients.${index}.alternativeAmount` as const)} />
                             </div>
-                            <div className="col-span-1 sm:w-32">
+                            <div className="col-span-1 lg:w-32">
                               <Input placeholder="np. sztuka" className="h-8 rounded-lg px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" {...form.register(`ingredients.${index}.alternativeUnit` as const)} />
                             </div>
                           </div>
-                          <div className="w-full sm:w-36">
+                          <div className="w-full lg:w-36">
                             <Select
                               value={form.watch(`ingredients.${index}.scalingType`) || "LINEAR"}
                               onValueChange={(value) => form.setValue(`ingredients.${index}.scalingType`, value as any)}
@@ -891,7 +891,7 @@ export default function Recipes() {
                         setNewInstructionLinkMultiplierInput(String(parsedMultiplier));
                       }}
                     />
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <Select value={String(newInstructionLink.ingredientId || "0")} onValueChange={(v) => setNewInstructionLink((prev) => ({ ...prev, ingredientId: Number(v) }))}>
                         <SelectTrigger><SelectValue placeholder="Składnik" /></SelectTrigger>
                         <SelectContent>
