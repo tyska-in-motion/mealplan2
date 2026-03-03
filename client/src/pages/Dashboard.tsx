@@ -10,7 +10,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Flame, CheckCircle2, Circle, CalendarDays, ChevronLeft, ChevronRight, Settings2, Wallet, Eye, Check, ChevronsUpDown, X, PlusCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { api } from "@shared/routes";
@@ -56,6 +56,11 @@ export default function Dashboard() {
   const { mutate: updateMealEntry, isPending: isSaving } = useUpdateMealEntry();
   const { mutate: addEntry, isPending: isQuickAdding } = useAddMealEntry();
   const { data: recipes } = useRecipes();
+
+  const { data: shoppingListExcludedIds = [] } = useQuery<number[]>({
+    queryKey: ["/api/shopping-list/exclusions"],
+  });
+
 
   const startEditing = () => {
     const currentIngredients = (viewingMeal?.ingredients && viewingMeal.ingredients.length > 0)
@@ -222,6 +227,36 @@ export default function Dashboard() {
       };
     }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
   };
+
+
+  const recommendedRecipes = useMemo(() => {
+    const availableIds = new Set<number>([
+      ...(allAvailableIngredients || [])
+        .filter((ingredient: any) => ingredient.alwaysAtHome)
+        .map((ingredient: any) => Number(ingredient.id)),
+      ...(shoppingListExcludedIds || []).map((id) => Number(id)),
+    ]);
+
+    const candidates = (recipes || [])
+      .map((recipe: any) => {
+        const ingredientIds = Array.from(new Set<number>((recipe.ingredients || []).map((ri: any) => Number(ri.ingredientId)).filter((id: number) => id > 0)));
+        if (ingredientIds.length === 0) return null;
+        const availableCount = ingredientIds.filter((id: number) => availableIds.has(id)).length;
+        const coverage = availableCount / ingredientIds.length;
+        return coverage > 0.5 ? { recipe, coverage } : null;
+      })
+      .filter(Boolean) as { recipe: any; coverage: number }[];
+
+    const seed = Number(dateStr.replace(/-/g, "")) || 1;
+    const seeded = [...candidates].sort((a, b) => {
+      const aSeed = (a.recipe.id * 9301 + seed * 49297) % 233280;
+      const bSeed = (b.recipe.id * 9301 + seed * 49297) % 233280;
+      if (aSeed !== bSeed) return aSeed - bSeed;
+      return b.coverage - a.coverage;
+    });
+
+    return seeded.slice(0, 5);
+  }, [allAvailableIngredients, shoppingListExcludedIds, recipes, dateStr]);
 
   const consumed = calculateConsumed(allEntries);
   const consumedA = calculateConsumed(allEntries.filter((e: any) => (e.person || "A") === "A"));
@@ -594,6 +629,34 @@ export default function Dashboard() {
         showFooter={false}
         onAddToPlan={() => {}} 
       />
+
+
+      <div className="bg-white rounded-2xl p-5 border border-border/50 shadow-sm mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xl font-bold">Polecane przepisy na dziś</h2>
+          <span className="text-xs text-muted-foreground">Losowane codziennie • {">"}50% składników</span>
+        </div>
+        {recommendedRecipes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Brak propozycji — oznacz więcej składników jako "zawsze mam w domu".</p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {recommendedRecipes.map(({ recipe, coverage }) => (
+              <button
+                key={recipe.id}
+                className="text-left rounded-xl border p-3 hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                onClick={() => {
+                  setViewingRecipe(recipe);
+                  setViewingMeal(null);
+                  setViewingPlannedServings(undefined);
+                }}
+              >
+                <p className="font-semibold text-sm line-clamp-2">{recipe.name}</p>
+                <p className="text-xs text-muted-foreground mt-1">Dostępność: {Math.round(coverage * 100)}%</p>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="space-y-6">
         <div className="flex items-center justify-between">
