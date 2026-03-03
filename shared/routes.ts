@@ -110,7 +110,7 @@ export const api = {
               })),
             }),
             missingIngredients: z.array(z.object({
-              ingredientId: z.number(),
+              ingredientId: z.number().nullable(),
               name: z.string(),
               reason: z.string(),
             })),

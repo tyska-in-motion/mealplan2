@@ -28,7 +28,7 @@ type AiRecipeResponse = {
     steps: string[];
   };
   recipeDraft: any;
-  missingIngredients: { ingredientId: number; name: string; reason: string }[];
+  missingIngredients: { ingredientId: number | null; name: string; reason: string }[];
   usedUserIngredientsFirst: boolean;
 };
 
@@ -119,7 +119,7 @@ export default function AiRecipe() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">AI Chef</h1>
-          <p className="text-muted-foreground">Wpisz główny składnik, kalorie i porcje. AI Chef dopyta o szczegóły, wykorzysta składniki z bazy użytkownika i oznaczy brakujące jako „do dokupienia”.</p>
+          <p className="text-muted-foreground">Wpisz główny składnik, kalorie i porcje. AI Chef wygeneruje realistyczny przepis i zwróci składniki jako czyste nazwy w JSON (bez dopasowania do bazy na tym etapie).</p>
         </div>
 
         <Card>
@@ -218,7 +218,7 @@ export default function AiRecipe() {
                 <div className="rounded-xl bg-muted p-4 text-sm">
                   <p className="font-semibold mb-1">Brakujące składniki</p>
                   <ul className="list-disc pl-5">
-                    {result.missingIngredients.map((item) => <li key={item.ingredientId}>{item.name} — {item.reason}</li>)}
+                    {result.missingIngredients.map((item, idx) => <li key={`${item.name}-${idx}`}>{item.name} — {item.reason}</li>)}
                   </ul>
                 </div>
               )}
