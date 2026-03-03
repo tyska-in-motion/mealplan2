@@ -8,8 +8,6 @@ import { calculateScaledAmount } from "@shared/scaling";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { generateAiChefRecipe } from "./ai-chef/service";
-import { aiChefIngredientRepository } from "./ai-chef/repository";
 
 
 const stepThresholdSchema = z.object({
@@ -138,19 +136,6 @@ export async function registerRoutes(
     }
   });
 
-  // AI Recipe Generator
-  app.post(api.ai.generateRecipe.path, async (req, res) => {
-    try {
-      const input = api.ai.generateRecipe.input.parse(req.body);
-      const result = await generateAiChefRecipe(input, aiChefIngredientRepository);
-      res.json(result);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.message });
-      }
-      throw err;
-    }
-  });
 
 
   // Recipes

@@ -10,7 +10,6 @@ import Ingredients from "@/pages/Ingredients";
 import MealPlan from "@/pages/MealPlan";
 import ShoppingList from "@/pages/ShoppingList";
 import Summary from "@/pages/Summary";
-import AiRecipe from "@/pages/AiRecipe";
 
 function Router() {
   return (
@@ -21,7 +20,6 @@ function Router() {
       <Route path="/meal-plan" component={MealPlan} />
       <Route path="/shopping-list" component={ShoppingList} />
       <Route path="/summary" component={Summary} />
-      <Route path="/ai-chef" component={AiRecipe} />
       <Route component={NotFound} />
     </Switch>
   );
