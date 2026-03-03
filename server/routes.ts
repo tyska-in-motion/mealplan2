@@ -8,6 +8,8 @@ import { calculateScaledAmount } from "@shared/scaling";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { generateAiChefRecipe } from "./ai-chef/service";
+import { aiChefIngredientRepository } from "./ai-chef/repository";
 
 
 const stepThresholdSchema = z.object({
@@ -52,18 +54,6 @@ function resolveIngredientForScaling(entry: any, ingredientRow: any) {
 }
 
 
-function normalizePantryTokens(value: string): string[] {
-  return value
-    .toLowerCase()
-    .split(/[\n,;]+|\s{2,}/)
-    .flatMap((chunk) => chunk.split(/\s+/))
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 2);
-}
-
-function toRounded(value: number): number {
-  return Math.round(value * 100) / 100;
-}
 
 // Extend Request type for multer
 interface MulterRequest extends Request {
@@ -148,131 +138,12 @@ export async function registerRoutes(
     }
   });
 
-
   // AI Recipe Generator
   app.post(api.ai.generateRecipe.path, async (req, res) => {
     try {
       const input = api.ai.generateRecipe.input.parse(req.body);
-      const pantryTokens = normalizePantryTokens(`${input.pantry} ${input.extraPantry ?? ""}`);
-      const allIngredients = await storage.getIngredients();
-
-      const selectedFollowUps = input.followUpAnswers
-        ?.filter((answer) => answer.hasIt)
-        .map((answer) => answer.ingredient.toLowerCase()) ?? [];
-
-      const availableTokens = Array.from(new Set([...pantryTokens, ...selectedFollowUps]));
-
-      const matchedIngredients = allIngredients
-        .filter((ingredient) => {
-          const name = ingredient.name.toLowerCase();
-          return availableTokens.some((token) => name.includes(token));
-        })
-        .sort((a, b) => {
-          const proteinDensityA = (Number(a.protein) || 0) - (Number(a.fat) || 0) * 0.25;
-          const proteinDensityB = (Number(b.protein) || 0) - (Number(b.fat) || 0) * 0.25;
-          return proteinDensityB - proteinDensityA;
-        });
-
-      if (matchedIngredients.length === 0) {
-        return res.status(400).json({
-          message: "Nie znalazłam składników pasujących do opisu spiżarni. Użyj nazw podobnych do tych z zakładki Ingredients.",
-        });
-      }
-
-      const hasFollowUpAnswers = Boolean(input.followUpAnswers?.length);
-      if (!hasFollowUpAnswers) {
-        const followUpCandidates = allIngredients
-          .filter((ingredient) => {
-            const name = ingredient.name.toLowerCase();
-            const inPantry = pantryTokens.some((token) => name.includes(token));
-            return !inPantry;
-          })
-          .sort((a, b) => {
-            const qualityA = (Number(a.protein) || 0) + (Number(a.carbs) || 0) * 0.3 - (Number(a.fat) || 0) * 0.2;
-            const qualityB = (Number(b.protein) || 0) + (Number(b.carbs) || 0) * 0.3 - (Number(b.fat) || 0) * 0.2;
-            return qualityB - qualityA;
-          })
-          .slice(0, 5)
-          .map((ingredient) => ingredient.name);
-
-        return res.json({
-          phase: "questions",
-          followUpQuestion: "Super, mam bazę. Zaznacz proszę, czy masz też któreś z tych produktów — doprecyzuje to przepis.",
-          followUpOptions: followUpCandidates,
-        });
-      }
-
-      const finalIngredients = matchedIngredients.slice(0, 10);
-      const caloriesTarget = input.targetCaloriesPerServing * input.servings;
-      const totalCaloriesPer100 = finalIngredients.reduce((acc, ingredient) => acc + (Number(ingredient.calories) || 0), 0);
-      const scalingFactor = totalCaloriesPer100 > 0 ? caloriesTarget / totalCaloriesPer100 : 1;
-
-      const calculatedIngredients = finalIngredients.map((ingredient) => {
-        const rawAmount = 100 * scalingFactor;
-        const amount = ingredient.unit === "szt" ? Math.max(1, Math.round(rawAmount)) : Math.max(5, Math.round(rawAmount));
-        const multiplier = ingredient.unit === "szt" ? amount : amount / 100;
-
-        const calories = (Number(ingredient.calories) || 0) * multiplier;
-        const protein = (Number(ingredient.protein) || 0) * multiplier;
-        const carbs = (Number(ingredient.carbs) || 0) * multiplier;
-        const fat = (Number(ingredient.fat) || 0) * multiplier;
-        const cost = (Number(ingredient.price) || 0) * multiplier;
-
-        return {
-          ingredientId: ingredient.id,
-          name: ingredient.name,
-          amount,
-          unit: ingredient.unit || "g",
-          calories: toRounded(calories),
-          protein: toRounded(protein),
-          carbs: toRounded(carbs),
-          fat: toRounded(fat),
-          cost: toRounded(cost),
-        };
-      });
-
-      const totals = calculatedIngredients.reduce(
-        (acc, ingredient) => {
-          acc.calories += ingredient.calories;
-          acc.protein += ingredient.protein;
-          acc.carbs += ingredient.carbs;
-          acc.fat += ingredient.fat;
-          acc.cost += ingredient.cost;
-          return acc;
-        },
-        { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 },
-      );
-
-      const missingIngredients = input.followUpAnswers
-        ?.filter((answer) => !answer.hasIt)
-        .map((answer) => answer.ingredient) ?? [];
-
-      const instructions = [
-        "Przygotuj i odmierz wszystkie składniki zgodnie z gramaturą.",
-        "Podsmaż lub ugotuj bazę białkową przez 6-10 minut.",
-        "Dodaj składniki węglowodanowe i warzywa, dopraw oraz duś 5-8 minut.",
-        `Podziel gotowe danie na dokładnie ${input.servings} porcji.`,
-        `Jedna porcja ma około ${toRounded(totals.calories / input.servings)} kcal (cel: ${input.targetCaloriesPerServing} kcal).`,
-      ];
-
-      res.json({
-        phase: "recipe",
-        title: "Przepis AI na bazie Twojej spiżarni",
-        summary: `Przepis oparty na składnikach, które potwierdziłaś/-eś. Łącznie ${toRounded(totals.calories)} kcal na ${input.servings} porcji.`,
-        followUpQuestion: "Gotowe — poniżej przepis po doprecyzowaniu składników.",
-        missingIngredients,
-        instructions,
-        ingredients: calculatedIngredients,
-        totals: {
-          calories: toRounded(totals.calories),
-          caloriesPerServing: toRounded(totals.calories / input.servings),
-          servings: input.servings,
-          protein: toRounded(totals.protein),
-          carbs: toRounded(totals.carbs),
-          fat: toRounded(totals.fat),
-          cost: toRounded(totals.cost),
-        },
-      });
+      const result = await generateAiChefRecipe(input, aiChefIngredientRepository);
+      res.json(result);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.message });
@@ -280,6 +151,7 @@ export async function registerRoutes(
       throw err;
     }
   });
+
 
   // Recipes
   app.get(api.recipes.list.path, async (req, res) => {
@@ -733,137 +605,6 @@ export async function registerRoutes(
     const apple = await storage.createIngredient({ name: "Jabłko", calories: 52, protein: 0.3, carbs: 14, fat: 0.2, unit: "szt", imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=500&auto=format&fit=crop&q=60" });
 
   
-  // AI Recipe Generator
-  app.post(api.ai.generateRecipe.path, async (req, res) => {
-    try {
-      const input = api.ai.generateRecipe.input.parse(req.body);
-      const pantryTokens = normalizePantryTokens(`${input.pantry} ${input.extraPantry ?? ""}`);
-      const allIngredients = await storage.getIngredients();
-
-      const selectedFollowUps = input.followUpAnswers
-        ?.filter((answer) => answer.hasIt)
-        .map((answer) => answer.ingredient.toLowerCase()) ?? [];
-
-      const availableTokens = Array.from(new Set([...pantryTokens, ...selectedFollowUps]));
-
-      const matchedIngredients = allIngredients
-        .filter((ingredient) => {
-          const name = ingredient.name.toLowerCase();
-          return availableTokens.some((token) => name.includes(token));
-        })
-        .sort((a, b) => {
-          const proteinDensityA = (Number(a.protein) || 0) - (Number(a.fat) || 0) * 0.25;
-          const proteinDensityB = (Number(b.protein) || 0) - (Number(b.fat) || 0) * 0.25;
-          return proteinDensityB - proteinDensityA;
-        });
-
-      if (matchedIngredients.length === 0) {
-        return res.status(400).json({
-          message: "Nie znalazłam składników pasujących do opisu spiżarni. Użyj nazw podobnych do tych z zakładki Ingredients.",
-        });
-      }
-
-      const hasFollowUpAnswers = Boolean(input.followUpAnswers?.length);
-      if (!hasFollowUpAnswers) {
-        const followUpCandidates = allIngredients
-          .filter((ingredient) => {
-            const name = ingredient.name.toLowerCase();
-            const inPantry = pantryTokens.some((token) => name.includes(token));
-            return !inPantry;
-          })
-          .sort((a, b) => {
-            const qualityA = (Number(a.protein) || 0) + (Number(a.carbs) || 0) * 0.3 - (Number(a.fat) || 0) * 0.2;
-            const qualityB = (Number(b.protein) || 0) + (Number(b.carbs) || 0) * 0.3 - (Number(b.fat) || 0) * 0.2;
-            return qualityB - qualityA;
-          })
-          .slice(0, 5)
-          .map((ingredient) => ingredient.name);
-
-        return res.json({
-          phase: "questions",
-          followUpQuestion: "Super, mam bazę. Zaznacz proszę, czy masz też któreś z tych produktów — doprecyzuje to przepis.",
-          followUpOptions: followUpCandidates,
-        });
-      }
-
-      const finalIngredients = matchedIngredients.slice(0, 10);
-      const caloriesTarget = input.targetCaloriesPerServing * input.servings;
-      const totalCaloriesPer100 = finalIngredients.reduce((acc, ingredient) => acc + (Number(ingredient.calories) || 0), 0);
-      const scalingFactor = totalCaloriesPer100 > 0 ? caloriesTarget / totalCaloriesPer100 : 1;
-
-      const calculatedIngredients = finalIngredients.map((ingredient) => {
-        const rawAmount = 100 * scalingFactor;
-        const amount = ingredient.unit === "szt" ? Math.max(1, Math.round(rawAmount)) : Math.max(5, Math.round(rawAmount));
-        const multiplier = ingredient.unit === "szt" ? amount : amount / 100;
-
-        const calories = (Number(ingredient.calories) || 0) * multiplier;
-        const protein = (Number(ingredient.protein) || 0) * multiplier;
-        const carbs = (Number(ingredient.carbs) || 0) * multiplier;
-        const fat = (Number(ingredient.fat) || 0) * multiplier;
-        const cost = (Number(ingredient.price) || 0) * multiplier;
-
-        return {
-          ingredientId: ingredient.id,
-          name: ingredient.name,
-          amount,
-          unit: ingredient.unit || "g",
-          calories: toRounded(calories),
-          protein: toRounded(protein),
-          carbs: toRounded(carbs),
-          fat: toRounded(fat),
-          cost: toRounded(cost),
-        };
-      });
-
-      const totals = calculatedIngredients.reduce(
-        (acc, ingredient) => {
-          acc.calories += ingredient.calories;
-          acc.protein += ingredient.protein;
-          acc.carbs += ingredient.carbs;
-          acc.fat += ingredient.fat;
-          acc.cost += ingredient.cost;
-          return acc;
-        },
-        { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 },
-      );
-
-      const missingIngredients = input.followUpAnswers
-        ?.filter((answer) => !answer.hasIt)
-        .map((answer) => answer.ingredient) ?? [];
-
-      const instructions = [
-        "Przygotuj i odmierz wszystkie składniki zgodnie z gramaturą.",
-        "Podsmaż lub ugotuj bazę białkową przez 6-10 minut.",
-        "Dodaj składniki węglowodanowe i warzywa, dopraw oraz duś 5-8 minut.",
-        `Podziel gotowe danie na dokładnie ${input.servings} porcji.`,
-        `Jedna porcja ma około ${toRounded(totals.calories / input.servings)} kcal (cel: ${input.targetCaloriesPerServing} kcal).`,
-      ];
-
-      res.json({
-        phase: "recipe",
-        title: "Przepis AI na bazie Twojej spiżarni",
-        summary: `Przepis oparty na składnikach, które potwierdziłaś/-eś. Łącznie ${toRounded(totals.calories)} kcal na ${input.servings} porcji.`,
-        followUpQuestion: "Gotowe — poniżej przepis po doprecyzowaniu składników.",
-        missingIngredients,
-        instructions,
-        ingredients: calculatedIngredients,
-        totals: {
-          calories: toRounded(totals.calories),
-          caloriesPerServing: toRounded(totals.calories / input.servings),
-          servings: input.servings,
-          protein: toRounded(totals.protein),
-          carbs: toRounded(totals.carbs),
-          fat: toRounded(totals.fat),
-          cost: toRounded(totals.cost),
-        },
-      });
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.message });
-      }
-      throw err;
-    }
-  });
 
   // Recipes
     const chickenRecipe = await storage.createRecipe({
