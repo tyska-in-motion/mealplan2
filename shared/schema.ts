@@ -6,7 +6,7 @@ import { z } from "zod";
 
 export type InstructionSegment =
   | { type: "text"; text: string }
-  | { type: "ingredient"; text: string; ingredientId: number; multiplier?: number };
+  | { type: "ingredient"; text: string; ingredientId: number; ingredientIds?: number[]; multiplier?: number };
 
 export type InstructionStep = {
   segments: InstructionSegment[];

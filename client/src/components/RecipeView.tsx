@@ -121,14 +121,23 @@ export function RecipeView({
     return calculateScaledAmount(ri, servingsToUse, recipeServings);
   };
 
-  const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number; multiplier?: number }) => {
-    const ingredientData = baseIngredients.find((ri: any) => Number(ri.ingredientId) === Number(segment.ingredientId));
-    if (!ingredientData) return segment.text;
-
+  const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number; ingredientIds?: number[]; multiplier?: number }) => {
     const multiplier = typeof segment.multiplier === "number" && segment.multiplier > 0 ? segment.multiplier : 1;
-    const amount = Math.round(getScaledAmount(ingredientData) * multiplier);
-    const unit = ingredientData.unit || ingredientData.ingredient?.unit || "g";
-    return `${ingredientData.ingredient?.name || segment.text}-${amount}${unit}`;
+    const ingredientIds = (segment.ingredientIds && segment.ingredientIds.length > 0)
+      ? segment.ingredientIds
+      : [segment.ingredientId];
+
+    const labels = ingredientIds
+      .map((id) => baseIngredients.find((ri: any) => Number(ri.ingredientId) === Number(id)))
+      .filter(Boolean)
+      .map((ingredientData: any) => {
+        const amount = Math.round(getScaledAmount(ingredientData) * multiplier);
+        const unit = ingredientData.unit || ingredientData.ingredient?.unit || "g";
+        return `${ingredientData.ingredient?.name || segment.text}-${amount}${unit}`;
+      });
+
+    if (labels.length === 0) return segment.text;
+    return labels.join(", ");
   };
 
   const baseCaloriesPerServing = Math.round((recipe?.ingredients || []).reduce((sum: number, ri: any) =>

@@ -451,7 +451,7 @@ export async function registerRoutes(
 
     const shoppingMap = new Map<number, { name: string, amount: number, unit: string, category: string, unitWeight: number | null }>();
 
-    entries.forEach(entry => {
+    entries.filter((entry) => !entry.isEaten).forEach(entry => {
       const ingredientsToUse = entry.ingredients.length > 0
         ? entry.ingredients
         : (entry.recipe?.ingredients || []);
