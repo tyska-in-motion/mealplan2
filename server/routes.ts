@@ -156,17 +156,22 @@ export async function registerRoutes(
       const pantryTokens = normalizePantryTokens(`${input.pantry} ${input.extraPantry ?? ""}`);
       const allIngredients = await storage.getIngredients();
 
+      const selectedFollowUps = input.followUpAnswers
+        ?.filter((answer) => answer.hasIt)
+        .map((answer) => answer.ingredient.toLowerCase()) ?? [];
+
+      const availableTokens = Array.from(new Set([...pantryTokens, ...selectedFollowUps]));
+
       const matchedIngredients = allIngredients
         .filter((ingredient) => {
           const name = ingredient.name.toLowerCase();
-          return pantryTokens.some((token) => name.includes(token));
+          return availableTokens.some((token) => name.includes(token));
         })
         .sort((a, b) => {
           const proteinDensityA = (Number(a.protein) || 0) - (Number(a.fat) || 0) * 0.25;
           const proteinDensityB = (Number(b.protein) || 0) - (Number(b.fat) || 0) * 0.25;
           return proteinDensityB - proteinDensityA;
-        })
-        .slice(0, 10);
+        });
 
       if (matchedIngredients.length === 0) {
         return res.status(400).json({
@@ -174,12 +179,36 @@ export async function registerRoutes(
         });
       }
 
+      const hasFollowUpAnswers = Boolean(input.followUpAnswers?.length);
+      if (!hasFollowUpAnswers) {
+        const followUpCandidates = allIngredients
+          .filter((ingredient) => {
+            const name = ingredient.name.toLowerCase();
+            const inPantry = pantryTokens.some((token) => name.includes(token));
+            return !inPantry;
+          })
+          .sort((a, b) => {
+            const qualityA = (Number(a.protein) || 0) + (Number(a.carbs) || 0) * 0.3 - (Number(a.fat) || 0) * 0.2;
+            const qualityB = (Number(b.protein) || 0) + (Number(b.carbs) || 0) * 0.3 - (Number(b.fat) || 0) * 0.2;
+            return qualityB - qualityA;
+          })
+          .slice(0, 5)
+          .map((ingredient) => ingredient.name);
+
+        return res.json({
+          phase: "questions",
+          followUpQuestion: "Super, mam bazę. Zaznacz proszę, czy masz też któreś z tych produktów — doprecyzuje to przepis.",
+          followUpOptions: followUpCandidates,
+        });
+      }
+
+      const finalIngredients = matchedIngredients.slice(0, 10);
       const caloriesTarget = input.targetCaloriesPerServing * input.servings;
-      const totalCaloriesPer100 = matchedIngredients.reduce((acc, ingredient) => acc + (Number(ingredient.calories) || 0), 0);
+      const totalCaloriesPer100 = finalIngredients.reduce((acc, ingredient) => acc + (Number(ingredient.calories) || 0), 0);
       const scalingFactor = totalCaloriesPer100 > 0 ? caloriesTarget / totalCaloriesPer100 : 1;
 
-      const calculatedIngredients = matchedIngredients.map((ingredient) => {
-        const rawAmount = (ingredient.unit === "szt" ? 100 : 100) * scalingFactor;
+      const calculatedIngredients = finalIngredients.map((ingredient) => {
+        const rawAmount = 100 * scalingFactor;
         const amount = ingredient.unit === "szt" ? Math.max(1, Math.round(rawAmount)) : Math.max(5, Math.round(rawAmount));
         const multiplier = ingredient.unit === "szt" ? amount : amount / 100;
 
@@ -214,9 +243,9 @@ export async function registerRoutes(
         { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 },
       );
 
-      const missingIngredients = pantryTokens.length <= 2
-        ? ["Przyprawy (sól, pieprz)", "Źródło tłuszczu do smażenia"]
-        : [];
+      const missingIngredients = input.followUpAnswers
+        ?.filter((answer) => !answer.hasIt)
+        .map((answer) => answer.ingredient) ?? [];
 
       const instructions = [
         "Przygotuj i odmierz wszystkie składniki zgodnie z gramaturą.",
@@ -227,9 +256,10 @@ export async function registerRoutes(
       ];
 
       res.json({
+        phase: "recipe",
         title: "Przepis AI na bazie Twojej spiżarni",
-        summary: `Przepis oparty wyłącznie o znalezione składniki. Łącznie ${toRounded(totals.calories)} kcal na ${input.servings} porcji.`,
-        followUpQuestion: "Czy masz jeszcze przyprawy, źródło tłuszczu do smażenia albo warzywo do zwiększenia objętości posiłku?",
+        summary: `Przepis oparty na składnikach, które potwierdziłaś/-eś. Łącznie ${toRounded(totals.calories)} kcal na ${input.servings} porcji.`,
+        followUpQuestion: "Gotowe — poniżej przepis po doprecyzowaniu składników.",
         missingIngredients,
         instructions,
         ingredients: calculatedIngredients,
@@ -710,17 +740,22 @@ export async function registerRoutes(
       const pantryTokens = normalizePantryTokens(`${input.pantry} ${input.extraPantry ?? ""}`);
       const allIngredients = await storage.getIngredients();
 
+      const selectedFollowUps = input.followUpAnswers
+        ?.filter((answer) => answer.hasIt)
+        .map((answer) => answer.ingredient.toLowerCase()) ?? [];
+
+      const availableTokens = Array.from(new Set([...pantryTokens, ...selectedFollowUps]));
+
       const matchedIngredients = allIngredients
         .filter((ingredient) => {
           const name = ingredient.name.toLowerCase();
-          return pantryTokens.some((token) => name.includes(token));
+          return availableTokens.some((token) => name.includes(token));
         })
         .sort((a, b) => {
           const proteinDensityA = (Number(a.protein) || 0) - (Number(a.fat) || 0) * 0.25;
           const proteinDensityB = (Number(b.protein) || 0) - (Number(b.fat) || 0) * 0.25;
           return proteinDensityB - proteinDensityA;
-        })
-        .slice(0, 10);
+        });
 
       if (matchedIngredients.length === 0) {
         return res.status(400).json({
@@ -728,12 +763,36 @@ export async function registerRoutes(
         });
       }
 
+      const hasFollowUpAnswers = Boolean(input.followUpAnswers?.length);
+      if (!hasFollowUpAnswers) {
+        const followUpCandidates = allIngredients
+          .filter((ingredient) => {
+            const name = ingredient.name.toLowerCase();
+            const inPantry = pantryTokens.some((token) => name.includes(token));
+            return !inPantry;
+          })
+          .sort((a, b) => {
+            const qualityA = (Number(a.protein) || 0) + (Number(a.carbs) || 0) * 0.3 - (Number(a.fat) || 0) * 0.2;
+            const qualityB = (Number(b.protein) || 0) + (Number(b.carbs) || 0) * 0.3 - (Number(b.fat) || 0) * 0.2;
+            return qualityB - qualityA;
+          })
+          .slice(0, 5)
+          .map((ingredient) => ingredient.name);
+
+        return res.json({
+          phase: "questions",
+          followUpQuestion: "Super, mam bazę. Zaznacz proszę, czy masz też któreś z tych produktów — doprecyzuje to przepis.",
+          followUpOptions: followUpCandidates,
+        });
+      }
+
+      const finalIngredients = matchedIngredients.slice(0, 10);
       const caloriesTarget = input.targetCaloriesPerServing * input.servings;
-      const totalCaloriesPer100 = matchedIngredients.reduce((acc, ingredient) => acc + (Number(ingredient.calories) || 0), 0);
+      const totalCaloriesPer100 = finalIngredients.reduce((acc, ingredient) => acc + (Number(ingredient.calories) || 0), 0);
       const scalingFactor = totalCaloriesPer100 > 0 ? caloriesTarget / totalCaloriesPer100 : 1;
 
-      const calculatedIngredients = matchedIngredients.map((ingredient) => {
-        const rawAmount = (ingredient.unit === "szt" ? 100 : 100) * scalingFactor;
+      const calculatedIngredients = finalIngredients.map((ingredient) => {
+        const rawAmount = 100 * scalingFactor;
         const amount = ingredient.unit === "szt" ? Math.max(1, Math.round(rawAmount)) : Math.max(5, Math.round(rawAmount));
         const multiplier = ingredient.unit === "szt" ? amount : amount / 100;
 
@@ -768,9 +827,9 @@ export async function registerRoutes(
         { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 },
       );
 
-      const missingIngredients = pantryTokens.length <= 2
-        ? ["Przyprawy (sól, pieprz)", "Źródło tłuszczu do smażenia"]
-        : [];
+      const missingIngredients = input.followUpAnswers
+        ?.filter((answer) => !answer.hasIt)
+        .map((answer) => answer.ingredient) ?? [];
 
       const instructions = [
         "Przygotuj i odmierz wszystkie składniki zgodnie z gramaturą.",
@@ -781,9 +840,10 @@ export async function registerRoutes(
       ];
 
       res.json({
+        phase: "recipe",
         title: "Przepis AI na bazie Twojej spiżarni",
-        summary: `Przepis oparty wyłącznie o znalezione składniki. Łącznie ${toRounded(totals.calories)} kcal na ${input.servings} porcji.`,
-        followUpQuestion: "Czy masz jeszcze przyprawy, źródło tłuszczu do smażenia albo warzywo do zwiększenia objętości posiłku?",
+        summary: `Przepis oparty na składnikach, które potwierdziłaś/-eś. Łącznie ${toRounded(totals.calories)} kcal na ${input.servings} porcji.`,
+        followUpQuestion: "Gotowe — poniżej przepis po doprecyzowaniu składników.",
         missingIngredients,
         instructions,
         ingredients: calculatedIngredients,

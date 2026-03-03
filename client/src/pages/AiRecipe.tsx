@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
 
 type AiRecipeResponse = {
+  phase: "recipe";
   title: string;
   summary: string;
   followUpQuestion: string;
@@ -37,6 +38,12 @@ type AiRecipeResponse = {
   };
 };
 
+type AiRecipeQuestionsResponse = {
+  phase: "questions";
+  followUpQuestion: string;
+  followUpOptions: string[];
+};
+
 export default function AiRecipe() {
   const [pantry, setPantry] = useState("");
   const [servings, setServings] = useState("2");
@@ -44,11 +51,17 @@ export default function AiRecipe() {
   const [extraPantry, setExtraPantry] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<AiRecipeResponse | null>(null);
+  const [questionStep, setQuestionStep] = useState<AiRecipeQuestionsResponse | null>(null);
+  const [followUpAnswers, setFollowUpAnswers] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
-  const onGenerate = async () => {
+  const generate = async (answers?: { ingredient: string; hasIt: boolean }[]) => {
     setIsLoading(true);
-    setResult(null);
+    if (!answers?.length) {
+      setResult(null);
+      setQuestionStep(null);
+      setFollowUpAnswers({});
+    }
 
     try {
       const payload = {
@@ -56,6 +69,7 @@ export default function AiRecipe() {
         servings: Number(servings),
         targetCaloriesPerServing: Number(targetCaloriesPerServing),
         extraPantry: extraPantry || undefined,
+        followUpAnswers: answers,
       };
 
       const parsed = api.ai.generateRecipe.input.parse(payload);
@@ -72,6 +86,14 @@ export default function AiRecipe() {
       }
 
       const data = api.ai.generateRecipe.responses[200].parse(body);
+      if (data.phase === "questions") {
+        setQuestionStep(data);
+        const defaultAnswers = Object.fromEntries(data.followUpOptions.map((item) => [item, false]));
+        setFollowUpAnswers(defaultAnswers);
+        return;
+      }
+
+      setQuestionStep(null);
       setResult(data);
     } catch (err: any) {
       toast({
@@ -82,6 +104,19 @@ export default function AiRecipe() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const onGenerate = async () => {
+    await generate();
+  };
+
+  const onConfirmFollowUps = async () => {
+    if (!questionStep) return;
+    const answers = questionStep.followUpOptions.map((ingredient) => ({
+      ingredient,
+      hasIt: Boolean(followUpAnswers[ingredient]),
+    }));
+    await generate(answers);
   };
 
   return (
@@ -149,6 +184,31 @@ export default function AiRecipe() {
             </Button>
           </CardContent>
         </Card>
+
+        {questionStep && !result && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Doprecyzowanie składników</CardTitle>
+              <p className="text-sm text-muted-foreground">{questionStep.followUpQuestion}</p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {questionStep.followUpOptions.map((option) => (
+                <label key={option} className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                  <span>{option}</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(followUpAnswers[option])}
+                    onChange={(e) => setFollowUpAnswers((prev) => ({ ...prev, [option]: e.target.checked }))}
+                  />
+                </label>
+              ))}
+
+              <Button onClick={onConfirmFollowUps} disabled={isLoading} className="rounded-xl">
+                {isLoading ? <><LoadingSpinner /> Generowanie przepisu...</> : "Potwierdź i wygeneruj przepis"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {result && (
           <Card>
