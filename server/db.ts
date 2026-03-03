@@ -33,6 +33,8 @@ export async function ensureDbCompat() {
 
   await pool.query(`ALTER TABLE recipe_ingredients
     ADD COLUMN IF NOT EXISTS base_amount real,
+    ADD COLUMN IF NOT EXISTS alternative_amount real,
+    ADD COLUMN IF NOT EXISTS alternative_unit text,
     ADD COLUMN IF NOT EXISTS unit text,
     ADD COLUMN IF NOT EXISTS scaling_type ingredient_scaling_type,
     ADD COLUMN IF NOT EXISTS scaling_formula text,

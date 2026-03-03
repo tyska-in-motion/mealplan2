@@ -34,6 +34,8 @@ const recipeIngredientInputSchema = z.object({
   amount: z.number(),
   baseAmount: z.number().optional(),
   unit: z.string().optional(),
+  alternativeAmount: z.number().min(0).optional(),
+  alternativeUnit: z.string().optional(),
   scalingType: z.enum(["LINEAR", "FIXED", "STEP", "FORMULA"]).optional().default("LINEAR"),
   scalingFormula: z.string().optional(),
   stepThresholds: z.array(stepThresholdSchema).optional(),

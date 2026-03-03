@@ -60,6 +60,8 @@ export const recipeIngredients = pgTable("recipe_ingredients", {
   ingredientId: integer("ingredient_id").notNull(),
   amount: integer("amount").notNull(), // Legacy amount (kept for backward compatibility)
   baseAmount: real("base_amount").notNull(),
+  alternativeAmount: real("alternative_amount"),
+  alternativeUnit: text("alternative_unit"),
   unit: text("unit").notNull().default("g"),
   scalingType: ingredientScalingTypeEnum("scaling_type").notNull().default("LINEAR"),
   scalingFormula: text("scaling_formula"),
