@@ -57,6 +57,11 @@ export default function Dashboard() {
   const { mutate: addEntry, isPending: isQuickAdding } = useAddMealEntry();
   const { data: recipes } = useRecipes();
 
+  const { data: shoppingListExcludedIds = [] } = useQuery<number[]>({
+    queryKey: ["/api/shopping-list/exclusions"],
+  });
+
+
   const startEditing = () => {
     const currentIngredients = (viewingMeal?.ingredients && viewingMeal.ingredients.length > 0)
       ? viewingMeal.ingredients
@@ -225,11 +230,12 @@ export default function Dashboard() {
 
 
   const recommendedRecipes = useMemo(() => {
-    const availableIds = new Set(
-      (allAvailableIngredients || [])
+    const availableIds = new Set<number>([
+      ...(allAvailableIngredients || [])
         .filter((ingredient: any) => ingredient.alwaysAtHome)
-        .map((ingredient: any) => Number(ingredient.id))
-    );
+        .map((ingredient: any) => Number(ingredient.id)),
+      ...(shoppingListExcludedIds || []).map((id) => Number(id)),
+    ]);
 
     const candidates = (recipes || [])
       .map((recipe: any) => {
@@ -250,7 +256,7 @@ export default function Dashboard() {
     });
 
     return seeded.slice(0, 5);
-  }, [allAvailableIngredients, recipes, dateStr]);
+  }, [allAvailableIngredients, shoppingListExcludedIds, recipes, dateStr]);
 
   const consumed = calculateConsumed(allEntries);
   const consumedA = calculateConsumed(allEntries.filter((e: any) => (e.person || "A") === "A"));
