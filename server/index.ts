@@ -1,8 +1,12 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { ensureDbCompat } from "./db";
-import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+
+import fs from "fs";
+
+if (typeof process.loadEnvFile === "function" && fs.existsSync(".env")) {
+  process.loadEnvFile(".env");
+}
 
 process.on("uncaughtException", (e) => console.error("UNCAUGHT", e));
 process.on("unhandledRejection", (e) => console.error("UNHANDLED", e));
@@ -114,6 +118,11 @@ app.use((req, res, next) => {
 app.get("/__auth_test", (_req, res) => res.send("ok"));
 
 (async () => {
+  const [{ ensureDbCompat }, { registerRoutes }] = await Promise.all([
+    import("./db"),
+    import("./routes"),
+  ]);
+
   await ensureDbCompat();
   await registerRoutes(httpServer, app);
 
