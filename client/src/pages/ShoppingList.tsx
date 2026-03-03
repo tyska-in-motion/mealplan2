@@ -16,6 +16,9 @@ const roundToSingleDecimal = (value: number) => Math.round(value * 10) / 10;
 
 const formatAmount = (value: number) => {
   const rounded = roundToSingleDecimal(value);
+  if (Number.isInteger(rounded)) {
+    return String(rounded);
+  }
   return rounded.toFixed(1);
 };
 

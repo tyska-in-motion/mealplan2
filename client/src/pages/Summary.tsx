@@ -129,7 +129,7 @@ export default function Summary() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 8);
 
-    const dailyHistory = days.map((day) => {
+    const dailyHistory = [...days].sort((a, b) => b.date.localeCompare(a.date)).map((day) => {
       const entries = day.entries || [];
       const getPersonCalories = (person: "A" | "B") => {
         return Math.round(entries

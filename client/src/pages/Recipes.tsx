@@ -77,7 +77,6 @@ export default function Recipes() {
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string>("all");
-  const [favoriteFilter, setFavoriteFilter] = useState<"all" | "favorites">("all");
   const [sortBy, setSortBy] = useState<string>("frequency");
   const [manualAvailableIngredientIds, setManualAvailableIngredientIds] = useState<number[]>([]);
   const [excludedDefaultIngredientIds, setExcludedDefaultIngredientIds] = useState<number[]>([]);
@@ -135,7 +134,7 @@ export default function Recipes() {
         const matchesTag = selectedTag === "all" || recipe.tags?.includes(selectedTag);
         if (!matchesTag) return false;
 
-        const matchesFavorite = favoriteFilter === "all" || !!recipe.isFavorite;
+        const matchesFavorite = sortBy !== "favorites" || !!recipe.isFavorite;
         if (!matchesFavorite) return false;
 
         if (!normalizedSearch) return true;
@@ -189,7 +188,7 @@ export default function Recipes() {
         return 0;
     }
   });
-  }, [recipes, search, selectedTag, favoriteFilter, sortBy, effectiveAvailableIngredientIds]);
+  }, [recipes, search, selectedTag, sortBy, effectiveAvailableIngredientIds]);
 
   // New state for "Add to Meal Plan"
   const [isAddToPlanOpen, setIsAddToPlanOpen] = useState(false);
@@ -345,6 +344,18 @@ export default function Recipes() {
   }, [availableIngredients, watchedRecipeIngredients]);
 
 
+
+  const groupedInstructionLinks = useMemo(() => {
+    const grouped = new Map<string, InstructionLink[]>();
+    instructionLinks.forEach((link) => {
+      const multiplier = typeof link.multiplier === "number" ? link.multiplier : 1;
+      const key = `${link.stepIndex}__${link.text.trim().toLowerCase()}__${multiplier}`;
+      const existing = grouped.get(key) || [];
+      grouped.set(key, [...existing, link]);
+    });
+    return Array.from(grouped.values());
+  }, [instructionLinks]);
+
   const getRecipeCaloriesPerServing = (recipe: any) => {
     const servings = Number(recipe?.servings) || 1;
     const baseTotal = (recipe?.ingredients || []).reduce((sum: number, ri: any) =>
@@ -403,12 +414,18 @@ export default function Recipes() {
     const initialLinks: InstructionLink[] = (recipe.instructionSteps || []).flatMap((step: any, stepIndex: number) =>
       (step?.segments || [])
         .filter((segment: any) => segment.type === "ingredient")
-        .map((segment: any) => ({
-          stepIndex,
-          text: segment.text,
-          ingredientId: Number(segment.ingredientId),
-          multiplier: typeof segment.multiplier === "number" ? segment.multiplier : 1,
-        }))
+        .flatMap((segment: any) => {
+          const ingredientIds = Array.isArray(segment.ingredientIds) && segment.ingredientIds.length > 0
+            ? segment.ingredientIds
+            : [segment.ingredientId];
+
+          return ingredientIds.map((ingredientId: number) => ({
+            stepIndex,
+            text: segment.text,
+            ingredientId: Number(ingredientId),
+            multiplier: typeof segment.multiplier === "number" ? segment.multiplier : 1,
+          }));
+        })
     );
     setInstructionLinks(initialLinks);
     setIsOpen(true);
@@ -854,18 +871,35 @@ export default function Recipes() {
                           if (!newInstructionLink.text.trim() || !newInstructionLink.ingredientId) return;
                           const multiplier = parsePositiveMultiplier(newInstructionLinkMultiplierInput);
                           setInstructionLinks((prev) => [...prev, { ...newInstructionLink, multiplier }]);
-                          setNewInstructionLink((prev) => ({ ...prev, text: "", multiplier }));
+                          setNewInstructionLink((prev) => ({ ...prev, multiplier }));
                         }}
                       >Dodaj</Button>
                     </div>
                   </div>
                   <div className="space-y-1">
-                    {instructionLinks.map((link, idx) => {
-                      const ingredientName = (availableIngredients || []).find((ing: any) => ing.id === link.ingredientId)?.name || `#${link.ingredientId}`;
+                    {groupedInstructionLinks.map((group, idx) => {
+                      const first = group[0];
+                      const ingredientNames = group
+                        .map((link) => (availableIngredients || []).find((ing: any) => ing.id === link.ingredientId)?.name || `#${link.ingredientId}`)
+                        .join(", ");
                       return (
-                        <div key={`${link.stepIndex}-${link.text}-${idx}`} className="flex items-center justify-between text-xs bg-white rounded-md px-2 py-1 border">
-                          <span>Krok {link.stepIndex + 1}: <b>{link.text}</b> → {ingredientName} ×{link.multiplier ?? 1}</span>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => setInstructionLinks((prev) => prev.filter((_, i) => i !== idx))}>Usuń</Button>
+                        <div key={`${first.stepIndex}-${first.text}-${idx}`} className="flex items-center justify-between text-xs bg-white rounded-md px-2 py-1 border">
+                          <span>Krok {first.stepIndex + 1}: <b>{first.text}</b> → {ingredientNames} ×{first.multiplier ?? 1}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setInstructionLinks((prev) =>
+                                prev.filter((link) => {
+                                  const sameMultiplier = (link.multiplier ?? 1) === (first.multiplier ?? 1);
+                                  return !(link.stepIndex === first.stepIndex && link.text === first.text && sameMultiplier);
+                                })
+                              )
+                            }
+                          >
+                            Usuń
+                          </Button>
                         </div>
                       );
                     })}
@@ -958,15 +992,6 @@ export default function Recipes() {
             </SelectContent>
           </Select>
           
-          <Select value={favoriteFilter} onValueChange={(value: "all" | "favorites") => setFavoriteFilter(value)}>
-            <SelectTrigger className="w-full sm:w-[180px] h-[52px] rounded-2xl bg-white shadow-sm border-border">
-              <SelectValue placeholder="Ulubione" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Wszystkie</SelectItem>
-              <SelectItem value="favorites">Tylko ulubione</SelectItem>
-            </SelectContent>
-          </Select>
 
           <Select value={sortBy} onValueChange={setSortBy}>
             <SelectTrigger className="w-full sm:w-[180px] h-[52px] rounded-2xl bg-white shadow-sm border-border">
@@ -981,6 +1006,7 @@ export default function Recipes() {
               <SelectItem value="protein">Białko (max)</SelectItem>
               <SelectItem value="carbs">Węglowodany (max)</SelectItem>
               <SelectItem value="fat">Tłuszcze (max)</SelectItem>
+              <SelectItem value="favorites">Tylko ulubione</SelectItem>
               <SelectItem value="match">Dopasowanie do składników</SelectItem>
             </SelectContent>
           </Select>

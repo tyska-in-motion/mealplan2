@@ -40,10 +40,22 @@ export const buildInstructionSteps = (instructions: string | undefined, links: I
           segments.push({ type: "text", text: stepText.slice(cursor, position) });
         }
 
+        const sameLinks = applicableLinks.filter(
+          (candidate) =>
+            candidate.text.toLowerCase() === link.text.toLowerCase() &&
+            (typeof candidate.multiplier === "number" && Number.isFinite(candidate.multiplier)
+              ? candidate.multiplier
+              : 1) ===
+              (typeof link.multiplier === "number" && Number.isFinite(link.multiplier) ? link.multiplier : 1)
+        );
+
+        const uniqueIngredientIds = Array.from(new Set(sameLinks.map((candidate) => Number(candidate.ingredientId)).filter((id) => id > 0)));
+
         segments.push({
           type: "ingredient",
           text: stepText.slice(position, position + link.text.length),
-          ingredientId: link.ingredientId,
+          ingredientId: uniqueIngredientIds[0] || Number(link.ingredientId),
+          ingredientIds: uniqueIngredientIds.length > 0 ? uniqueIngredientIds : undefined,
           multiplier: typeof link.multiplier === "number" && Number.isFinite(link.multiplier) ? link.multiplier : 1,
         });
         cursor = position + link.text.length;
