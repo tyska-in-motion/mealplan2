@@ -55,12 +55,16 @@ export const api = {
       path: '/api/ai/recipe',
       input: z.object({
         pantry: z.string().min(1),
-        targetCalories: z.number().min(100).max(6000),
+        extraPantry: z.string().optional(),
+        servings: z.number().int().min(1).max(12),
+        targetCaloriesPerServing: z.number().min(100).max(6000),
       }),
       responses: {
         200: z.object({
           title: z.string(),
           summary: z.string(),
+          followUpQuestion: z.string(),
+          missingIngredients: z.array(z.string()),
           instructions: z.array(z.string()),
           ingredients: z.array(z.object({
             ingredientId: z.number(),
@@ -75,6 +79,8 @@ export const api = {
           })),
           totals: z.object({
             calories: z.number(),
+            caloriesPerServing: z.number(),
+            servings: z.number(),
             protein: z.number(),
             carbs: z.number(),
             fat: z.number(),
