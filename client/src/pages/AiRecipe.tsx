@@ -2,74 +2,81 @@ import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
+import { useCreateRecipe } from "@/hooks/use-recipes";
+import { useIngredients } from "@/hooks/use-ingredients";
 
 type AiRecipeResponse = {
   phase: "recipe";
-  title: string;
-  summary: string;
-  followUpQuestion: string;
-  missingIngredients: string[];
-  instructions: string[];
-  ingredients: {
-    ingredientId: number;
+  recipe: {
     name: string;
-    amount: number;
-    unit: string;
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    cost: number;
-  }[];
-  totals: {
-    calories: number;
-    caloriesPerServing: number;
+    description: string;
     servings: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    cost: number;
+    estimatedCaloriesPerServing: number;
+    ingredients: {
+      ingredientId: number | null;
+      name: string;
+      amount: number;
+      unit: string;
+      fromUserStock: boolean;
+      toBuy: boolean;
+    }[];
+    steps: string[];
   };
+  recipeDraft: any;
+  missingIngredients: { ingredientId: number; name: string; reason: string }[];
+  usedUserIngredientsFirst: boolean;
 };
 
 type AiRecipeQuestionsResponse = {
   phase: "questions";
   followUpQuestion: string;
-  followUpOptions: string[];
+  questions: {
+    diet: string[];
+    difficulty: string[];
+    maxPrepTimeMinutes: number[];
+  };
 };
 
 export default function AiRecipe() {
-  const [pantry, setPantry] = useState("");
+  const [mainIngredient, setMainIngredient] = useState("");
   const [servings, setServings] = useState("2");
   const [targetCaloriesPerServing, setTargetCaloriesPerServing] = useState("700");
-  const [extraPantry, setExtraPantry] = useState("");
+  const [diet, setDiet] = useState("bez ograniczeń");
+  const [difficulty, setDifficulty] = useState("łatwy");
+  const [maxPrepTimeMinutes, setMaxPrepTimeMinutes] = useState("25");
+  const [allergies, setAllergies] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<AiRecipeResponse | null>(null);
   const [questionStep, setQuestionStep] = useState<AiRecipeQuestionsResponse | null>(null);
-  const [followUpAnswers, setFollowUpAnswers] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
+  const createRecipe = useCreateRecipe();
+  const { data: ingredients } = useIngredients();
 
-  const generate = async (answers?: { ingredient: string; hasIt: boolean }[]) => {
+  const generate = async (withAnswers = false) => {
     setIsLoading(true);
-    if (!answers?.length) {
+    if (!withAnswers) {
       setResult(null);
       setQuestionStep(null);
-      setFollowUpAnswers({});
     }
 
     try {
       const payload = {
-        pantry,
+        mainIngredient,
         servings: Number(servings),
         targetCaloriesPerServing: Number(targetCaloriesPerServing),
-        extraPantry: extraPantry || undefined,
-        followUpAnswers: answers,
+        answers: withAnswers
+          ? {
+              diet,
+              difficulty,
+              maxPrepTimeMinutes: Number(maxPrepTimeMinutes),
+              allergies: allergies || undefined,
+            }
+          : undefined,
       };
 
       const parsed = api.ai.generateRecipe.input.parse(payload);
@@ -88,8 +95,9 @@ export default function AiRecipe() {
       const data = api.ai.generateRecipe.responses[200].parse(body);
       if (data.phase === "questions") {
         setQuestionStep(data);
-        const defaultAnswers = Object.fromEntries(data.followUpOptions.map((item) => [item, false]));
-        setFollowUpAnswers(defaultAnswers);
+        setDiet(data.questions.diet[0]);
+        setDifficulty(data.questions.difficulty[0]);
+        setMaxPrepTimeMinutes(String(data.questions.maxPrepTimeMinutes[0]));
         return;
       }
 
@@ -106,25 +114,12 @@ export default function AiRecipe() {
     }
   };
 
-  const onGenerate = async () => {
-    await generate();
-  };
-
-  const onConfirmFollowUps = async () => {
-    if (!questionStep) return;
-    const answers = questionStep.followUpOptions.map((ingredient) => ({
-      ingredient,
-      hasIt: Boolean(followUpAnswers[ingredient]),
-    }));
-    await generate(answers);
-  };
-
   return (
     <Layout>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">AI Chef</h1>
-          <p className="text-muted-foreground">AI Chef tworzy przepis wyłącznie na bazie składników które masz, pyta o brakujące rzeczy i dopasowuje dokładnie porcje oraz kcal na porcję.</p>
+          <p className="text-muted-foreground">Wpisz główny składnik, kalorie i porcje. AI Chef dopyta o szczegóły, wykorzysta składniki z bazy użytkownika i oznaczy brakujące jako „do dokupienia”.</p>
         </div>
 
         <Card>
@@ -133,54 +128,23 @@ export default function AiRecipe() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="pantry">Co masz w domu?</Label>
-              <Textarea
-                id="pantry"
-                placeholder="np. kurczak, ryż, brokuły, oliwa"
-                value={pantry}
-                onChange={(e) => setPantry(e.target.value)}
-                rows={4}
-              />
+              <Label htmlFor="mainIngredient">Główny składnik</Label>
+              <Input id="mainIngredient" value={mainIngredient} onChange={(e) => setMainIngredient(e.target.value)} placeholder="np. kurczak" />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="servings">Liczba porcji</Label>
-                <Input
-                  id="servings"
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={servings}
-                  onChange={(e) => setServings(e.target.value)}
-                />
+                <Input id="servings" type="number" min={1} max={12} value={servings} onChange={(e) => setServings(e.target.value)} />
               </div>
-
               <div className="space-y-2">
-                <Label htmlFor="kcal">Kcal na porcję</Label>
-                <Input
-                  id="kcal"
-                  type="number"
-                  min={100}
-                  value={targetCaloriesPerServing}
-                  onChange={(e) => setTargetCaloriesPerServing(e.target.value)}
-                />
+                <Label htmlFor="kcal">Maks. kcal na porcję</Label>
+                <Input id="kcal" type="number" min={100} value={targetCaloriesPerServing} onChange={(e) => setTargetCaloriesPerServing(e.target.value)} />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="extra">Co masz jeszcze? (opcjonalnie)</Label>
-              <Textarea
-                id="extra"
-                placeholder="np. czosnek, cebula, passata, przyprawy"
-                value={extraPantry}
-                onChange={(e) => setExtraPantry(e.target.value)}
-                rows={2}
-              />
-            </div>
-
-            <Button onClick={onGenerate} disabled={isLoading} className="rounded-xl">
-              {isLoading ? <><LoadingSpinner /> Generowanie...</> : "Wygeneruj przepis"}
+            <Button onClick={() => generate(false)} disabled={isLoading} className="rounded-xl">
+              {isLoading ? <><LoadingSpinner /> Generowanie...</> : "Dalej"}
             </Button>
           </CardContent>
         </Card>
@@ -188,23 +152,36 @@ export default function AiRecipe() {
         {questionStep && !result && (
           <Card>
             <CardHeader>
-              <CardTitle>Doprecyzowanie składników</CardTitle>
+              <CardTitle>Pytania doprecyzowujące</CardTitle>
               <p className="text-sm text-muted-foreground">{questionStep.followUpQuestion}</p>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {questionStep.followUpOptions.map((option) => (
-                <label key={option} className="flex items-center justify-between rounded-lg border p-3 text-sm">
-                  <span>{option}</span>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(followUpAnswers[option])}
-                    onChange={(e) => setFollowUpAnswers((prev) => ({ ...prev, [option]: e.target.checked }))}
-                  />
-                </label>
-              ))}
-
-              <Button onClick={onConfirmFollowUps} disabled={isLoading} className="rounded-xl">
-                {isLoading ? <><LoadingSpinner /> Generowanie przepisu...</> : "Potwierdź i wygeneruj przepis"}
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Dieta</Label>
+                  <select className="w-full border rounded-md px-3 py-2" value={diet} onChange={(e) => setDiet(e.target.value)}>
+                    {questionStep.questions.diet.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Poziom trudności</Label>
+                  <select className="w-full border rounded-md px-3 py-2" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
+                    {questionStep.questions.difficulty.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Maksymalny czas (min)</Label>
+                  <select className="w-full border rounded-md px-3 py-2" value={maxPrepTimeMinutes} onChange={(e) => setMaxPrepTimeMinutes(e.target.value)}>
+                    {questionStep.questions.maxPrepTimeMinutes.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Alergie (opcjonalnie)</Label>
+                <Input value={allergies} onChange={(e) => setAllergies(e.target.value)} placeholder="np. orzechy, laktoza" />
+              </div>
+              <Button onClick={() => generate(true)} disabled={isLoading} className="rounded-xl">
+                {isLoading ? <><LoadingSpinner /> Generowanie przepisu...</> : "Wygeneruj przepis"}
               </Button>
             </CardContent>
           </Card>
@@ -213,43 +190,55 @@ export default function AiRecipe() {
         {result && (
           <Card>
             <CardHeader>
-              <CardTitle>{result.title}</CardTitle>
-              <p className="text-sm text-muted-foreground">{result.summary}</p>
-              <p className="text-sm">{result.followUpQuestion}</p>
-              {result.missingIngredients.length > 0 && (
-                <p className="text-xs text-muted-foreground">Brakujące / sugerowane dodatki: {result.missingIngredients.join(", ")}</p>
-              )}
+              <CardTitle>{result.recipe.name}</CardTitle>
+              <p className="text-sm text-muted-foreground">{result.recipe.description}</p>
+              <p className="text-sm">Kalorie: ~{result.recipe.estimatedCaloriesPerServing} kcal / porcję ({result.recipe.servings} porcji)</p>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
-                <h3 className="font-semibold mb-2">Składniki i wyliczenia</h3>
+                <h3 className="font-semibold mb-2">Składniki</h3>
                 <div className="space-y-2">
-                  {result.ingredients.map((item) => (
-                    <div key={item.ingredientId} className="rounded-lg border p-3 text-sm">
+                  {result.recipe.ingredients.map((item, idx) => (
+                    <div key={`${item.name}-${idx}`} className="rounded-lg border p-3 text-sm">
                       <p className="font-medium">{item.name} — {item.amount} {item.unit}</p>
-                      <p className="text-muted-foreground">
-                        {item.calories} kcal | B: {item.protein} g | W: {item.carbs} g | T: {item.fat} g | koszt: {item.cost.toFixed(2)}
-                      </p>
+                      <p className="text-muted-foreground">{item.toBuy ? "do dokupienia" : "z bazy użytkownika"}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="rounded-xl bg-muted p-4 text-sm">
-                <p className="font-semibold mb-1">Suma</p>
-                <p>
-                  {result.totals.calories} kcal łącznie ({result.totals.caloriesPerServing} kcal / porcja, porcji: {result.totals.servings}) | B: {result.totals.protein} g | W: {result.totals.carbs} g | T: {result.totals.fat} g | koszt: {result.totals.cost.toFixed(2)}
-                </p>
-              </div>
-
               <div>
-                <h3 className="font-semibold mb-2">Instrukcje</h3>
+                <h3 className="font-semibold mb-2">Kroki przygotowania</h3>
                 <ol className="list-decimal pl-5 space-y-1 text-sm">
-                  {result.instructions.map((step, idx) => (
-                    <li key={idx}>{step}</li>
-                  ))}
+                  {result.recipe.steps.map((step, idx) => <li key={idx}>{step}</li>)}
                 </ol>
               </div>
+
+              {result.missingIngredients.length > 0 && (
+                <div className="rounded-xl bg-muted p-4 text-sm">
+                  <p className="font-semibold mb-1">Brakujące składniki</p>
+                  <ul className="list-disc pl-5">
+                    {result.missingIngredients.map((item) => <li key={item.ingredientId}>{item.name} — {item.reason}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              <Button
+                className="rounded-xl"
+                onClick={async () => {
+                  try {
+                    await createRecipe.mutateAsync(result.recipeDraft);
+                    toast({ title: "Zapisano", description: "Przepis został zapisany do Recipe." });
+                  } catch (err: any) {
+                    toast({ variant: "destructive", title: "Błąd zapisu", description: err.message || "Nie udało się zapisać przepisu" });
+                  }
+                }}
+                disabled={createRecipe.isPending}
+              >
+                {createRecipe.isPending ? <><LoadingSpinner /> Zapisywanie...</> : "Zapisz jako Recipe"}
+              </Button>
+
+              <p className="text-xs text-muted-foreground">Składniki domowe (alwaysAtHome) wykryte w bazie: {(ingredients || []).filter((item: any) => item.alwaysAtHome).length}</p>
             </CardContent>
           </Card>
         )}
