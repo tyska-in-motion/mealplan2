@@ -57,7 +57,7 @@ export type AiChefRecipeResponse = {
     }[];
   };
   missingIngredients: {
-    ingredientId: number;
+    ingredientId: number | null;
     name: string;
     reason: string;
   }[];

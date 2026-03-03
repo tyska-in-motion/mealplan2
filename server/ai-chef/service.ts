@@ -1,4 +1,4 @@
-import type { Ingredient, InstructionStep } from "@shared/schema";
+import type { InstructionStep } from "@shared/schema";
 import type { AiChefInput, AiChefResponse, AiChefIngredientDataSource } from "./types";
 
 const QUESTION_BANK = {
@@ -15,36 +15,78 @@ function normalize(value: string): string {
   return value.toLowerCase().trim();
 }
 
-function getAmount(unit: string, baseMultiplier: number): number {
-  if (unit === "szt") return Math.max(1, Math.round(baseMultiplier));
-  return Math.max(20, Math.round(baseMultiplier * 100));
+function buildInstructionSteps(steps: string[]): InstructionStep[] {
+  return steps.map((step) => ({ segments: [{ type: "text", text: step }] }));
 }
 
-function ingredientScore(item: Ingredient, mainIngredient: string): number {
-  const name = normalize(item.name);
-  let score = (Number(item.protein) || 0) + (Number(item.carbs) || 0) * 0.2 - (Number(item.fat) || 0) * 0.1;
-  if (name.includes(mainIngredient)) score += 1000;
-  if (item.alwaysAtHome) score += 100;
-  return score;
+const KITCHEN_BASE = [
+  { name: "oliwa z oliwek", unit: "g", amountPerServing: 8, kcalPerUnit: 8.84 },
+  { name: "sól", unit: "g", amountPerServing: 1, kcalPerUnit: 0 },
+  { name: "pieprz czarny", unit: "g", amountPerServing: 0.5, kcalPerUnit: 2.5 },
+  { name: "czosnek", unit: "g", amountPerServing: 6, kcalPerUnit: 1.49 },
+  { name: "cebula", unit: "g", amountPerServing: 40, kcalPerUnit: 0.4 },
+  { name: "pomidory krojone", unit: "g", amountPerServing: 90, kcalPerUnit: 0.18 },
+  { name: "jogurt naturalny", unit: "g", amountPerServing: 40, kcalPerUnit: 0.61 },
+  { name: "ryż basmati", unit: "g", amountPerServing: 55, kcalPerUnit: 3.6 },
+  { name: "kasza bulgur", unit: "g", amountPerServing: 55, kcalPerUnit: 3.4 },
+  { name: "ziemniaki", unit: "g", amountPerServing: 180, kcalPerUnit: 0.77 },
+  { name: "papryka czerwona", unit: "g", amountPerServing: 70, kcalPerUnit: 0.31 },
+  { name: "cukinia", unit: "g", amountPerServing: 100, kcalPerUnit: 0.17 },
+  { name: "szpinak", unit: "g", amountPerServing: 60, kcalPerUnit: 0.23 },
+  { name: "sok z cytryny", unit: "g", amountPerServing: 8, kcalPerUnit: 0.22 },
+  { name: "natka pietruszki", unit: "g", amountPerServing: 4, kcalPerUnit: 0.36 },
+];
+
+function getMainIngredientKcal(mainIngredient: string): number {
+  const main = normalize(mainIngredient);
+  if (main.includes("łoso") || main.includes("makrela")) return 2.0;
+  if (main.includes("tuńczyk") || main.includes("dorsz")) return 1.2;
+  if (main.includes("tofu")) return 1.4;
+  if (main.includes("ciecierzy") || main.includes("fasol")) return 1.6;
+  if (main.includes("wołow")) return 2.4;
+  if (main.includes("wieprz")) return 2.7;
+  if (main.includes("indyk") || main.includes("kurcz")) return 1.65;
+  return 1.8;
 }
 
-function buildInstructionSteps(steps: string[], selected: Ingredient[]): InstructionStep[] {
-  const main = selected[0];
-  return steps.map((step, idx) => {
-    if (idx === 0 && main) {
-      return {
-        segments: [
-          { type: "text", text: "Przygotuj " },
-          { type: "ingredient", text: main.name, ingredientId: main.id, multiplier: 1 },
-          { type: "text", text: " i odmierz resztę składników." },
-        ],
-      };
-    }
-    return { segments: [{ type: "text", text: step }] };
-  });
+function getBaseIngredients(mainIngredient: string, diet: string) {
+  const main = normalize(mainIngredient);
+  const normalizedDiet = normalize(diet);
+  const proteinAmount = normalizedDiet.includes("high-protein") ? 190 : 160;
+
+  const ingredients = [
+    { name: mainIngredient, amount: proteinAmount, unit: "g", kcalPerUnit: getMainIngredientKcal(main) },
+    KITCHEN_BASE.find((item) => item.name === "oliwa z oliwek")!,
+    KITCHEN_BASE.find((item) => item.name === "czosnek")!,
+    KITCHEN_BASE.find((item) => item.name === "cebula")!,
+    KITCHEN_BASE.find((item) => item.name === "papryka czerwona")!,
+    KITCHEN_BASE.find((item) => item.name === "cukinia")!,
+    KITCHEN_BASE.find((item) => item.name === "sok z cytryny")!,
+    KITCHEN_BASE.find((item) => item.name === "natka pietruszki")!,
+    KITCHEN_BASE.find((item) => item.name === "sól")!,
+    KITCHEN_BASE.find((item) => item.name === "pieprz czarny")!,
+  ].map((item) => ({
+    name: item.name,
+    amount: "amount" in item ? item.amount : item.amountPerServing,
+    unit: item.unit,
+    kcalPerUnit: item.kcalPerUnit,
+  }));
+
+  if (normalizedDiet.includes("low-carb")) {
+    ingredients.push({ name: "szpinak", amount: 80, unit: "g", kcalPerUnit: 0.23 });
+  } else {
+    ingredients.push({ name: "ryż basmati", amount: 65, unit: "g", kcalPerUnit: 3.6 });
+  }
+
+  if (normalizedDiet.includes("wegańska")) {
+    return ingredients.filter((item) => !normalize(item.name).includes("jogurt"));
+  }
+
+  ingredients.push({ name: "jogurt naturalny", amount: 35, unit: "g", kcalPerUnit: 0.61 });
+  return ingredients;
 }
 
-export async function generateAiChefRecipe(input: AiChefInput, datasource: AiChefIngredientDataSource): Promise<AiChefResponse> {
+export async function generateAiChefRecipe(input: AiChefInput, _datasource: AiChefIngredientDataSource): Promise<AiChefResponse> {
   if (!input.answers) {
     return {
       phase: "questions",
@@ -53,64 +95,42 @@ export async function generateAiChefRecipe(input: AiChefInput, datasource: AiChe
     };
   }
 
-  const allIngredients = await datasource.getAllIngredients();
-  const userIngredients = await datasource.getUserIngredients();
-  const mainIngredient = normalize(input.mainIngredient);
-
-  const sorted = [...allIngredients].sort((a, b) => ingredientScore(b, mainIngredient) - ingredientScore(a, mainIngredient));
-  const selected = sorted.slice(0, 8);
-
-  if (!selected.some((item) => normalize(item.name).includes(mainIngredient))) {
-    const matched = allIngredients.find((item) => normalize(item.name).includes(mainIngredient));
-    if (matched) {
-      selected.pop();
-      selected.unshift(matched);
-    }
-  }
-
   const targetTotalCalories = input.targetCaloriesPerServing * input.servings;
-  const caloriesPer100Total = selected.reduce((acc, item) => acc + (Number(item.calories) || 0), 0) || 1;
-  const multiplier = targetTotalCalories / caloriesPer100Total;
+  const baseIngredients = getBaseIngredients(input.mainIngredient, input.answers.diet);
+  const baseCalories = baseIngredients.reduce((acc, item) => acc + item.amount * item.kcalPerUnit, 0);
+  const scalingFactor = baseCalories > 0 ? targetTotalCalories / (baseCalories * input.servings) : 1;
 
-  const userIngredientIds = new Set(userIngredients.map((item) => item.id));
-
-  const ingredients = selected.map((item) => {
-    const amount = getAmount(item.unit || "g", multiplier);
-    return {
-      ingredientId: item.id,
-      name: item.name,
-      amount,
-      unit: item.unit || "g",
-      fromUserStock: userIngredientIds.has(item.id),
-      toBuy: !userIngredientIds.has(item.id),
-    };
-  });
+  const ingredients = baseIngredients.map((item) => ({
+    ingredientId: null,
+    name: item.name,
+    amount: Math.max(1, round(item.amount * scalingFactor * input.servings)),
+    unit: item.unit,
+    fromUserStock: false,
+    toBuy: true,
+  }));
 
   const estimatedTotalCalories = ingredients.reduce((acc, item) => {
-    const source = selected.find((s) => s.id === item.ingredientId);
+    const source = baseIngredients.find((base) => base.name === item.name);
     if (!source) return acc;
-    const localMultiplier = item.unit === "szt" ? item.amount : item.amount / 100;
-    return acc + (Number(source.calories) || 0) * localMultiplier;
+    return acc + item.amount * source.kcalPerUnit;
   }, 0);
 
-  const missingIngredients = ingredients
-    .filter((item) => item.toBuy)
-    .map((item) => ({
-      ingredientId: item.ingredientId,
-      name: item.name,
-      reason: "do dokupienia",
-    }));
+  const missingIngredients = ingredients.map((item) => ({
+    ingredientId: null,
+    name: item.name,
+    reason: "do dopasowania i ewentualnego dokupienia",
+  }));
 
   const prepTime = input.answers.maxPrepTimeMinutes;
   const steps = [
     `Przygotuj wszystkie składniki i odmierz porcje dla ${input.servings} porcji.`,
     `Obrób główny składnik (${input.mainIngredient}) zgodnie z poziomem trudności: ${input.answers.difficulty}.`,
-    "Dodawaj kolejne składniki partiami, zaczynając od tych z bazy użytkownika.",
-    "Dopraw do wybranej diety i preferencji smakowych.",
+    "Podsmaż warzywa na oliwie, dodaj główny składnik i kontroluj stopień wysmażenia/upieczenia.",
+    "Dodaj składnik skrobiowy lub warzywa liściaste zgodnie z wybraną dietą, dopraw i zredukuj płyn.",
     `Podawaj od razu. Szacunkowo ${round(estimatedTotalCalories / input.servings)} kcal / porcję.`,
   ];
 
-  const instructionSteps = buildInstructionSteps(steps, selected);
+  const instructionSteps = buildInstructionSteps(steps);
   const recipeName = `AI Chef: ${input.mainIngredient} (${input.answers.diet})`;
 
   return {
@@ -132,15 +152,9 @@ export async function generateAiChefRecipe(input: AiChefInput, datasource: AiChe
       prepTime,
       servings: input.servings,
       tags: ["ai-chef", input.answers.diet, input.answers.difficulty],
-      ingredients: ingredients.map((item) => ({
-        ingredientId: item.ingredientId!,
-        amount: item.amount,
-        baseAmount: item.amount,
-        unit: item.unit,
-        scalingType: "LINEAR",
-      })),
+      ingredients: [],
     },
     missingIngredients,
-    usedUserIngredientsFirst: true,
+    usedUserIngredientsFirst: false,
   };
 }
