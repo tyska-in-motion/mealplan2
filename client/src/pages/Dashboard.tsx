@@ -182,8 +182,6 @@ export default function Dashboard() {
     },
   });
 
-  if (isLoadingPlan || isLoadingSettings) return <Layout><LoadingSpinner /></Layout>;
-
   const isToday = dateStr === todayStr;
   const allEntries = dayPlan?.entries || [];
   const personName: Record<string, string> = { A: "Tysia", B: "Mati" };
@@ -257,6 +255,8 @@ export default function Dashboard() {
 
     return seeded.slice(0, 5);
   }, [allAvailableIngredients, shoppingListExcludedIds, recipes, dateStr]);
+
+  if (isLoadingPlan || isLoadingSettings) return <Layout><LoadingSpinner /></Layout>;
 
   const consumed = calculateConsumed(allEntries);
   const consumedA = calculateConsumed(allEntries.filter((e: any) => (e.person || "A") === "A"));
