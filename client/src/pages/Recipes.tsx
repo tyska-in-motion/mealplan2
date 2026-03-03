@@ -645,7 +645,7 @@ export default function Recipes() {
                     const selectedId = Number(form.watch(`ingredients.${index}.ingredientId`));
                     return (
                       <div key={field.id} className="bg-secondary/20 p-2 rounded-xl border border-border/50">
-                        <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                           <div className="flex-1">
                             <Popover>
                               <PopoverTrigger asChild>
@@ -653,7 +653,7 @@ export default function Recipes() {
                                   variant="outline"
                                   role="combobox"
                                   className={cn(
-                                    "w-full justify-between h-9 rounded-lg bg-background font-normal",
+                                    "w-full justify-between h-8 rounded-lg bg-background font-normal text-xs sm:h-9 sm:text-sm",
                                     !selectedId && "text-muted-foreground"
                                   )}
                                 >
@@ -700,24 +700,26 @@ export default function Recipes() {
                               </PopoverContent>
                             </Popover>
                           </div>
-                          <div className="w-full sm:w-24">
-                            <Input type="number" placeholder="Bazowa" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.baseAmount` as const)} />
-                          </div>
-                          <div className="w-full sm:w-24">
-                            <Input placeholder="Jedn." className="h-9 rounded-lg" {...form.register(`ingredients.${index}.unit` as const)} />
-                          </div>
-                          <div className="w-full sm:w-24">
-                            <Input type="number" step="0.01" placeholder="np. 1" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.alternativeAmount` as const)} />
-                          </div>
-                          <div className="w-full sm:w-32">
-                            <Input placeholder="np. sztuka" className="h-9 rounded-lg" {...form.register(`ingredients.${index}.alternativeUnit` as const)} />
+                          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-1 sm:gap-2">
+                            <div className="col-span-1 sm:w-24">
+                              <Input type="number" placeholder="Bazowa" className="h-8 rounded-lg px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" {...form.register(`ingredients.${index}.baseAmount` as const)} />
+                            </div>
+                            <div className="col-span-1 sm:w-24">
+                              <Input placeholder="Jedn." className="h-8 rounded-lg px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" {...form.register(`ingredients.${index}.unit` as const)} />
+                            </div>
+                            <div className="col-span-1 sm:w-24">
+                              <Input type="number" step="0.01" placeholder="np. 1" className="h-8 rounded-lg px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" {...form.register(`ingredients.${index}.alternativeAmount` as const)} />
+                            </div>
+                            <div className="col-span-1 sm:w-32">
+                              <Input placeholder="np. sztuka" className="h-8 rounded-lg px-2 text-xs sm:h-9 sm:px-3 sm:text-sm" {...form.register(`ingredients.${index}.alternativeUnit` as const)} />
+                            </div>
                           </div>
                           <div className="w-full sm:w-36">
                             <Select
                               value={form.watch(`ingredients.${index}.scalingType`) || "LINEAR"}
                               onValueChange={(value) => form.setValue(`ingredients.${index}.scalingType`, value as any)}
                             >
-                              <SelectTrigger className="h-9 rounded-lg"><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="h-8 rounded-lg text-xs sm:h-9 sm:text-sm"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="LINEAR">LINEAR</SelectItem>
                                 <SelectItem value="FIXED">FIXED</SelectItem>
@@ -726,7 +728,7 @@ export default function Recipes() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg hover:bg-red-50 hover:text-red-500 self-end" onClick={() => remove(index)}>
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg hover:bg-red-50 hover:text-red-500 self-end sm:self-auto" onClick={() => remove(index)}>
                             <X className="w-4 h-4" />
                           </Button>
                         </div>
@@ -736,12 +738,9 @@ export default function Recipes() {
                           const alternativeAmount = Number(form.watch(`ingredients.${index}.alternativeAmount`)) || 0;
                           const alternativeUnit = form.watch(`ingredients.${index}.alternativeUnit`) || "";
                           if (alternativeAmount <= 0 || !alternativeUnit.trim()) return null;
-                          const gramsPerAlt = baseAmount > 0 ? baseAmount / alternativeAmount : 0;
-
                           return (
-                            <p className="mt-2 text-[10px] text-muted-foreground">
-                              Podgląd: {formatLocalizedNumber(alternativeAmount)} {alternativeUnit} = {formatLocalizedNumber(baseAmount)}g
-                              {gramsPerAlt > 0 ? ` (1 ${alternativeUnit} = ${formatLocalizedNumber(gramsPerAlt)}g)` : ""}
+                            <p className="mt-2 text-[10px] text-muted-foreground sm:text-xs">
+                              Podgląd: {formatLocalizedNumber(baseAmount)}g = {formatLocalizedNumber(alternativeAmount)} {alternativeUnit}
                               {selectedIngredient?.unitWeight ? ` · baza składnika: 1 szt ≈ ${formatLocalizedNumber(Number(selectedIngredient.unitWeight))}g` : ""}
                             </p>
                           );
