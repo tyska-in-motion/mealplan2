@@ -51,6 +51,20 @@ function resolveIngredientForScaling(entry: any, ingredientRow: any) {
   };
 }
 
+
+function normalizePantryTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[\n,;]+|\s{2,}/)
+    .flatMap((chunk) => chunk.split(/\s+/))
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function toRounded(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 // Extend Request type for multer
 interface MulterRequest extends Request {
   file?: Express.Multer.File;
@@ -131,6 +145,98 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Error deleting ingredient:", err);
       res.status(500).json({ message: "Błąd serwera przy usuwaniu składnika" });
+    }
+  });
+
+
+  // AI Recipe Generator
+  app.post(api.ai.generateRecipe.path, async (req, res) => {
+    try {
+      const input = api.ai.generateRecipe.input.parse(req.body);
+      const pantryTokens = normalizePantryTokens(input.pantry);
+      const allIngredients = await storage.getIngredients();
+
+      const matchedIngredients = allIngredients
+        .filter((ingredient) => {
+          const name = ingredient.name.toLowerCase();
+          return pantryTokens.some((token) => name.includes(token));
+        })
+        .sort((a, b) => {
+          const proteinDensityA = (Number(a.protein) || 0) - (Number(a.fat) || 0) * 0.25;
+          const proteinDensityB = (Number(b.protein) || 0) - (Number(b.fat) || 0) * 0.25;
+          return proteinDensityB - proteinDensityA;
+        })
+        .slice(0, 8);
+
+      if (matchedIngredients.length === 0) {
+        return res.status(400).json({
+          message: "Nie znalazłam składników pasujących do opisu spiżarni. Użyj nazw podobnych do tych z zakładki Ingredients.",
+        });
+      }
+
+      const weightPerIngredient = Math.max(40, Math.round(input.targetCalories / (matchedIngredients.length * 2)));
+
+      const calculatedIngredients = matchedIngredients.map((ingredient) => {
+        const amount = ingredient.unit === "ml" ? Math.round(weightPerIngredient * 0.7) : weightPerIngredient;
+        const multiplier = amount / 100;
+
+        const calories = (Number(ingredient.calories) || 0) * multiplier;
+        const protein = (Number(ingredient.protein) || 0) * multiplier;
+        const carbs = (Number(ingredient.carbs) || 0) * multiplier;
+        const fat = (Number(ingredient.fat) || 0) * multiplier;
+        const cost = (Number(ingredient.price) || 0) * multiplier;
+
+        return {
+          ingredientId: ingredient.id,
+          name: ingredient.name,
+          amount,
+          unit: ingredient.unit || "g",
+          calories: toRounded(calories),
+          protein: toRounded(protein),
+          carbs: toRounded(carbs),
+          fat: toRounded(fat),
+          cost: toRounded(cost),
+        };
+      });
+
+      const totals = calculatedIngredients.reduce(
+        (acc, ingredient) => {
+          acc.calories += ingredient.calories;
+          acc.protein += ingredient.protein;
+          acc.carbs += ingredient.carbs;
+          acc.fat += ingredient.fat;
+          acc.cost += ingredient.cost;
+          return acc;
+        },
+        { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 },
+      );
+
+      const instructions = [
+        "Przygotuj wszystkie składniki i pokrój je na mniejsze kawałki.",
+        "Podsmaż składniki wymagające obróbki termicznej przez 6-10 minut na średnim ogniu.",
+        "Dodaj pozostałe składniki i dopraw do smaku. W razie potrzeby dolej odrobinę wody.",
+        "Gotuj lub duś całość jeszcze 5-8 minut, aż składniki będą miękkie i aromatyczne.",
+        "Podawaj od razu. Możesz podzielić danie na 1-2 porcje.",
+      ];
+
+      res.json({
+        title: "Przepis AI na bazie Twojej spiżarni",
+        summary: `Dopasowano ${calculatedIngredients.length} składników do celu ${Math.round(input.targetCalories)} kcal.`,
+        instructions,
+        ingredients: calculatedIngredients,
+        totals: {
+          calories: toRounded(totals.calories),
+          protein: toRounded(totals.protein),
+          carbs: toRounded(totals.carbs),
+          fat: toRounded(totals.fat),
+          cost: toRounded(totals.cost),
+        },
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.message });
+      }
+      throw err;
     }
   });
 
@@ -585,7 +691,99 @@ export async function registerRoutes(
     const milk = await storage.createIngredient({ name: "Mleko 2%", calories: 50, protein: 3.4, carbs: 4.8, fat: 2, unit: "ml", imageUrl: "https://images.unsplash.com/photo-1563636619-e9143da7973b?w=500&auto=format&fit=crop&q=60" });
     const apple = await storage.createIngredient({ name: "Jabłko", calories: 52, protein: 0.3, carbs: 14, fat: 0.2, unit: "szt", imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=500&auto=format&fit=crop&q=60" });
 
-    // Recipes
+  
+  // AI Recipe Generator
+  app.post(api.ai.generateRecipe.path, async (req, res) => {
+    try {
+      const input = api.ai.generateRecipe.input.parse(req.body);
+      const pantryTokens = normalizePantryTokens(input.pantry);
+      const allIngredients = await storage.getIngredients();
+
+      const matchedIngredients = allIngredients
+        .filter((ingredient) => {
+          const name = ingredient.name.toLowerCase();
+          return pantryTokens.some((token) => name.includes(token));
+        })
+        .sort((a, b) => {
+          const proteinDensityA = (Number(a.protein) || 0) - (Number(a.fat) || 0) * 0.25;
+          const proteinDensityB = (Number(b.protein) || 0) - (Number(b.fat) || 0) * 0.25;
+          return proteinDensityB - proteinDensityA;
+        })
+        .slice(0, 8);
+
+      if (matchedIngredients.length === 0) {
+        return res.status(400).json({
+          message: "Nie znalazłam składników pasujących do opisu spiżarni. Użyj nazw podobnych do tych z zakładki Ingredients.",
+        });
+      }
+
+      const weightPerIngredient = Math.max(40, Math.round(input.targetCalories / (matchedIngredients.length * 2)));
+
+      const calculatedIngredients = matchedIngredients.map((ingredient) => {
+        const amount = ingredient.unit === "ml" ? Math.round(weightPerIngredient * 0.7) : weightPerIngredient;
+        const multiplier = amount / 100;
+
+        const calories = (Number(ingredient.calories) || 0) * multiplier;
+        const protein = (Number(ingredient.protein) || 0) * multiplier;
+        const carbs = (Number(ingredient.carbs) || 0) * multiplier;
+        const fat = (Number(ingredient.fat) || 0) * multiplier;
+        const cost = (Number(ingredient.price) || 0) * multiplier;
+
+        return {
+          ingredientId: ingredient.id,
+          name: ingredient.name,
+          amount,
+          unit: ingredient.unit || "g",
+          calories: toRounded(calories),
+          protein: toRounded(protein),
+          carbs: toRounded(carbs),
+          fat: toRounded(fat),
+          cost: toRounded(cost),
+        };
+      });
+
+      const totals = calculatedIngredients.reduce(
+        (acc, ingredient) => {
+          acc.calories += ingredient.calories;
+          acc.protein += ingredient.protein;
+          acc.carbs += ingredient.carbs;
+          acc.fat += ingredient.fat;
+          acc.cost += ingredient.cost;
+          return acc;
+        },
+        { calories: 0, protein: 0, carbs: 0, fat: 0, cost: 0 },
+      );
+
+      const instructions = [
+        "Przygotuj wszystkie składniki i pokrój je na mniejsze kawałki.",
+        "Podsmaż składniki wymagające obróbki termicznej przez 6-10 minut na średnim ogniu.",
+        "Dodaj pozostałe składniki i dopraw do smaku. W razie potrzeby dolej odrobinę wody.",
+        "Gotuj lub duś całość jeszcze 5-8 minut, aż składniki będą miękkie i aromatyczne.",
+        "Podawaj od razu. Możesz podzielić danie na 1-2 porcje.",
+      ];
+
+      res.json({
+        title: "Przepis AI na bazie Twojej spiżarni",
+        summary: `Dopasowano ${calculatedIngredients.length} składników do celu ${Math.round(input.targetCalories)} kcal.`,
+        instructions,
+        ingredients: calculatedIngredients,
+        totals: {
+          calories: toRounded(totals.calories),
+          protein: toRounded(totals.protein),
+          carbs: toRounded(totals.carbs),
+          fat: toRounded(totals.fat),
+          cost: toRounded(totals.cost),
+        },
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // Recipes
     const chickenRecipe = await storage.createRecipe({
       name: "Kurczak z ryżem i warzywami",
       description: "Klasyczne danie kulturysty. Proste, szybkie i zdrowe.",
