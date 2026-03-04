@@ -44,30 +44,35 @@ const instructionStepSchema = z.object({
 });
 
 
-function resolveIngredientForScaling(entry: any, ingredientRow: any) {
-  const recipeIngredient = (entry?.recipe?.ingredients || []).find(
-    (ri: any) => Number(ri.ingredientId) === Number(ingredientRow.ingredientId),
+function resolveIngredientForScaling(entry: any, ingredientRow: any, occurrenceTracker?: Map<number, number>) {
+  const ingredientId = Number(ingredientRow?.ingredientId);
+  const recipeIngredients = (entry?.recipe?.ingredients || []).filter(
+    (ri: any) => Number(ri.ingredientId) === ingredientId,
   );
-  const recipeFrequentAddon = (entry?.recipe?.frequentAddons || []).find(
-    (addon: any) => Number(addon.ingredientId) === Number(ingredientRow.ingredientId),
+  const recipeFrequentAddons = (entry?.recipe?.frequentAddons || []).filter(
+    (addon: any) => Number(addon.ingredientId) === ingredientId,
   );
 
+  const candidates = [...recipeIngredients, ...recipeFrequentAddons];
+  const currentOccurrence = occurrenceTracker
+    ? (occurrenceTracker.get(ingredientId) || 0) + 1
+    : 1;
+  if (occurrenceTracker) occurrenceTracker.set(ingredientId, currentOccurrence);
+  const source = candidates[currentOccurrence - 1] || candidates[0] || {};
+
   return {
-    ...recipeFrequentAddon,
-    ...recipeIngredient,
+    ...source,
     ...ingredientRow,
     baseAmount: Number(
       ingredientRow?.baseAmount
       ?? ingredientRow?.amount
-      ?? recipeIngredient?.baseAmount
-      ?? recipeIngredient?.amount
-      ?? recipeFrequentAddon?.baseAmount
-      ?? recipeFrequentAddon?.amount
+      ?? source?.baseAmount
+      ?? source?.amount
       ?? 0,
     ),
-    scalingType: ingredientRow?.scalingType ?? recipeIngredient?.scalingType ?? recipeFrequentAddon?.scalingType ?? "LINEAR",
-    scalingFormula: ingredientRow?.scalingFormula ?? recipeIngredient?.scalingFormula ?? recipeFrequentAddon?.scalingFormula,
-    stepThresholds: ingredientRow?.stepThresholds ?? recipeIngredient?.stepThresholds ?? recipeFrequentAddon?.stepThresholds,
+    scalingType: ingredientRow?.scalingType ?? source?.scalingType ?? "LINEAR",
+    scalingFormula: ingredientRow?.scalingFormula ?? source?.scalingFormula,
+    stepThresholds: ingredientRow?.stepThresholds ?? source?.stepThresholds,
   };
 }
 
@@ -335,9 +340,10 @@ export async function registerRoutes(
       const recipeServings = Number(entry.recipe?.servings || 1);
 
       if (ingredientsToUse.length > 0) {
+        const occurrenceTracker = new Map<number, number>();
         ingredientsToUse.forEach(ri => {
           if (!ri.ingredient) return;
-          const scaledAmount = calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings);
+          const scaledAmount = calculateScaledAmount(resolveIngredientForScaling(entry, ri, occurrenceTracker), entryServings, recipeServings);
           const multiplier = scaledAmount / 100;
           totalCalories += (ri.ingredient.calories * multiplier);
           totalProtein += (ri.ingredient.protein * multiplier);
@@ -358,17 +364,23 @@ export async function registerRoutes(
       const recipeServings = Number(entry.recipe?.servings || 1);
       return {
         ...entry,
-        ingredients: (entry.ingredients || []).map((ri: any) => ({
-          ...ri,
-          calculatedAmount: calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings),
-        })),
+        ingredients: (() => {
+          const occurrenceTracker = new Map<number, number>();
+          return (entry.ingredients || []).map((ri: any) => ({
+            ...ri,
+            calculatedAmount: calculateScaledAmount(resolveIngredientForScaling(entry, ri, occurrenceTracker), entryServings, recipeServings),
+          }));
+        })(),
         recipe: entry.recipe
           ? {
               ...entry.recipe,
-              ingredients: (entry.recipe.ingredients || []).map((ri: any) => ({
-                ...ri,
-                calculatedAmount: calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings),
-              })),
+              ingredients: (() => {
+                const occurrenceTracker = new Map<number, number>();
+                return (entry.recipe.ingredients || []).map((ri: any) => ({
+                  ...ri,
+                  calculatedAmount: calculateScaledAmount(resolveIngredientForScaling(entry, ri, occurrenceTracker), entryServings, recipeServings),
+                }));
+              })(),
             }
           : entry.recipe,
       };
@@ -490,12 +502,13 @@ export async function registerRoutes(
         ? entry.ingredients
         : (entry.recipe?.ingredients || []);
 
+      const occurrenceTracker = new Map<number, number>();
       ingredientsToUse.forEach(ri => {
         if (!ri.ingredient) return;
         const existing = shoppingMap.get(ri.ingredientId);
         const entryServings = Number(entry.servings) || 1;
         const recipeServings = Number(entry.recipe?.servings || 1);
-        const amount = calculateScaledAmount(resolveIngredientForScaling(entry, ri), entryServings, recipeServings);
+        const amount = calculateScaledAmount(resolveIngredientForScaling(entry, ri, occurrenceTracker), entryServings, recipeServings);
         if (existing) {
           existing.amount += amount;
         } else {
