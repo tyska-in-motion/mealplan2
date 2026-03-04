@@ -1,6 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-const DEFAULT_FETCH_TIMEOUT_MS = 15000;
+const DEFAULT_FETCH_TIMEOUT_MS = 60000;
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -14,21 +14,43 @@ export async function fetchWithTimeout(
   init: RequestInit = {},
   timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutController = new AbortController();
+  const callerSignal = init.signal;
+  let didTimeout = false;
+
+  const onCallerAbort = () => timeoutController.abort();
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      timeoutController.abort();
+    } else {
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+
+  const timeout = timeoutMs > 0
+    ? setTimeout(() => {
+        didTimeout = true;
+        timeoutController.abort();
+      }, timeoutMs)
+    : null;
 
   try {
     return await fetch(input, {
       ...init,
-      signal: controller.signal,
+      signal: timeoutController.signal,
     });
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    if (error instanceof Error && error.name === "AbortError" && didTimeout) {
       throw new Error(`Request timed out after ${timeoutMs}ms`);
     }
     throw error;
   } finally {
-    clearTimeout(timeout);
+    if (callerSignal) {
+      callerSignal.removeEventListener("abort", onCallerAbort);
+    }
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
 }
 
