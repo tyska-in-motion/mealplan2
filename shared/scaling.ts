@@ -150,7 +150,18 @@ export function calculateScaledAmount(
     case "FIXED":
       return baseAmount;
     case "STEP": {
-      const thresholds = ingredient.stepThresholds || [];
+      const thresholds = (ingredient.stepThresholds || [])
+        .map((threshold) => ({
+          minServings: Number(threshold.minServings) || 0,
+          maxServings: threshold.maxServings == null ? Number.POSITIVE_INFINITY : Number(threshold.maxServings),
+          amount: Number(threshold.amount),
+        }))
+        .filter((threshold) => Number.isFinite(threshold.amount) && threshold.maxServings >= threshold.minServings)
+        .sort((a, b) => {
+          if (b.minServings !== a.minServings) return b.minServings - a.minServings;
+          return a.maxServings - b.maxServings;
+        });
+
       const matched = thresholds.find((threshold) => {
         const min = Number(threshold.minServings) || 0;
         const max = threshold.maxServings == null ? Number.POSITIVE_INFINITY : Number(threshold.maxServings);
@@ -160,11 +171,15 @@ export function calculateScaledAmount(
     }
     case "FORMULA": {
       if (!ingredient.scalingFormula) return baseAmount * scaleFactor;
-      return evaluateScalingFormula(ingredient.scalingFormula, {
-        scaleFactor,
-        newServings,
-        baseServings,
-      });
+      try {
+        return evaluateScalingFormula(ingredient.scalingFormula, {
+          scaleFactor,
+          newServings,
+          baseServings,
+        });
+      } catch {
+        return baseAmount * scaleFactor;
+      }
     }
     case "LINEAR":
     default:

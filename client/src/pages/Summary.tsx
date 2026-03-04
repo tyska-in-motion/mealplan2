@@ -7,6 +7,7 @@ import { api, buildUrl } from "@shared/routes";
 import { format, subDays } from "date-fns";
 import { pl } from "date-fns/locale";
 import { CalendarDays, Coins, Flame, ChefHat, Carrot } from "lucide-react";
+import { calculateScaledAmount } from "@shared/scaling";
 
 type SummaryData = {
   date: string;
@@ -51,6 +52,14 @@ export default function Summary() {
       .filter((day): day is SummaryData => !!day);
 
     const totalCost = days.reduce((sum, day) => sum + (Number(day.totalPrice) || 0), 0);
+    const getEntryIngredientAmount = (entry: any, ri: any) => {
+      if (typeof ri?.calculatedAmount === "number" && Number.isFinite(ri.calculatedAmount)) {
+        return ri.calculatedAmount;
+      }
+      const entryServings = Number(entry?.servings) || 1;
+      const recipeServings = Number(entry?.recipe?.servings) || 1;
+      return calculateScaledAmount(ri, entryServings, recipeServings);
+    };
     const calculateEntryNutrients = (entry: any) => {
       const result = { calories: 0, protein: 0, carbs: 0, fat: 0 };
       const entryServings = Number(entry.servings) || 1;
@@ -64,25 +73,18 @@ export default function Summary() {
         };
       }
 
-      const recipeServings = Number(entry.recipe?.servings) || 1;
-      const factor = entryServings / recipeServings;
       const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
 
       ingredientsToUse.forEach((ri: any) => {
         if (!ri.ingredient) return;
-        const multiplier = (Number(ri.amount) || 0) / 100;
+        const multiplier = getEntryIngredientAmount(entry, ri) / 100;
         result.calories += (Number(ri.ingredient.calories) || 0) * multiplier;
         result.protein += (Number(ri.ingredient.protein) || 0) * multiplier;
         result.carbs += (Number(ri.ingredient.carbs) || 0) * multiplier;
         result.fat += (Number(ri.ingredient.fat) || 0) * multiplier;
       });
 
-      return {
-        calories: result.calories * factor,
-        protein: result.protein * factor,
-        carbs: result.carbs * factor,
-        fat: result.fat * factor,
-      };
+      return result;
     };
 
     const ingredientMap = new Map<number, { name: string; totalAmount: number; usedInDays: Set<string> }>();
@@ -97,10 +99,6 @@ export default function Summary() {
         }
 
         const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
-        const recipeServings = Number(entry.recipe?.servings) || 1;
-        const entryServings = Number(entry.servings) || 1;
-        const factor = entryServings / recipeServings;
-
         ingredientsToUse.forEach((ri: any) => {
           if (!ri.ingredient?.id) return;
           const currentIngredient = ingredientMap.get(ri.ingredient.id) || {
@@ -109,7 +107,7 @@ export default function Summary() {
             usedInDays: new Set<string>(),
           };
 
-          currentIngredient.totalAmount += (Number(ri.amount) || 0) * factor;
+          currentIngredient.totalAmount += getEntryIngredientAmount(entry, ri);
           currentIngredient.usedInDays.add(day.date);
           ingredientMap.set(ri.ingredient.id, currentIngredient);
         });
@@ -140,17 +138,14 @@ export default function Summary() {
               return sum + (Number(entry.customCalories) || 0) * servings;
             }
 
-            const recipeServings = Number(entry.recipe?.servings) || 1;
-            const entryServings = Number(entry.servings) || 1;
-            const factor = entryServings / recipeServings;
             const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
 
             const kcal = ingredientsToUse.reduce((kcalSum: number, ri: any) => {
               if (!ri.ingredient) return kcalSum;
-              return kcalSum + ((Number(ri.ingredient.calories) || 0) * (Number(ri.amount) || 0) / 100);
+              return kcalSum + ((Number(ri.ingredient.calories) || 0) * getEntryIngredientAmount(entry, ri) / 100);
             }, 0);
 
-            return sum + kcal * factor;
+            return sum + kcal;
           }, 0));
       };
 
@@ -162,17 +157,14 @@ export default function Summary() {
               return sum + (Number(entry.customPrice) || 0) * (Number(entry.servings) || 1);
             }
 
-            const recipeServings = Number(entry.recipe?.servings) || 1;
-            const entryServings = Number(entry.servings) || 1;
-            const factor = entryServings / recipeServings;
             const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
 
             const price = ingredientsToUse.reduce((priceSum: number, ri: any) => {
               if (!ri.ingredient) return priceSum;
-              return priceSum + ((Number(ri.ingredient.price) || 0) * (Number(ri.amount) || 0) / 100);
+              return priceSum + ((Number(ri.ingredient.price) || 0) * getEntryIngredientAmount(entry, ri) / 100);
             }, 0);
 
-            return sum + price * factor;
+            return sum + price;
           }, 0);
       };
 

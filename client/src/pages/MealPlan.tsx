@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { RecipeView } from "@/components/RecipeView";
+import { calculateScaledAmount } from "@shared/scaling";
 import { useToast } from "@/hooks/use-toast";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -970,9 +971,11 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
   const { data: dayPlan, isLoading } = useDayPlan(dateStr);
   const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
 
-  const getEffectiveIngredientAmount = (ri: any, entry: any, servingFactor: number) => {
+  const getEffectiveIngredientAmount = (ri: any, entry: any) => {
     if (typeof ri?.calculatedAmount === "number") return ri.calculatedAmount;
-    return (Number(ri?.amount) || 0) * servingFactor;
+    const entryServings = Number(entry?.servings) || 1;
+    const recipeServings = Number(entry?.recipe?.servings) || 1;
+    return calculateScaledAmount(ri, entryServings, recipeServings);
   };
 
   const calculateSummary = (entries: any[]) => {
@@ -1005,8 +1008,7 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
           occurrenceMap.set(ingredientId, occurrence);
           const recipeCount = recipeIngredientCounts.get(ingredientId) || 0;
           const isFrequentAddon = frequentAddonIds.has(ingredientId) && occurrence > recipeCount;
-          const servingFactor = isFrequentAddon ? 1 : (entryServings / recipeServings);
-          const effectiveAmount = getEffectiveIngredientAmount(ri, entry, servingFactor);
+          const effectiveAmount = getEffectiveIngredientAmount(ri, entry);
           const multiplier = effectiveAmount / 100;
           calories += (ri.ingredient.calories || 0) * multiplier;
           protein += (ri.ingredient.protein || 0) * multiplier;
@@ -1070,14 +1072,13 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
         const mergeEntryIngredients = (entry: any) => {
           const recipeServings = Number(entry?.recipe?.servings) || 1;
           const entryServings = Number(entry?.servings) || 1;
-          const scale = entryServings / recipeServings;
           const source = entry?.ingredients?.length ? entry.ingredients : (entry?.recipe?.ingredients || []);
 
           source.forEach((ri: any) => {
             const ingredientId = Number(ri.ingredientId);
             if (!ingredientId) return;
             const current = mergedByIngredient.get(ingredientId);
-            const amountToAdd = getEffectiveIngredientAmount(ri, entry, scale);
+            const amountToAdd = getEffectiveIngredientAmount(ri, entry);
             if (current) {
               current.amount += amountToAdd;
               current.calculatedAmount += amountToAdd;
