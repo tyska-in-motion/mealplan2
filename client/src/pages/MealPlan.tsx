@@ -1079,10 +1079,12 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
             const amountToAdd = getEffectiveIngredientAmount(ri, entry, scale);
             if (current) {
               current.amount += amountToAdd;
+              current.calculatedAmount += amountToAdd;
             } else {
               mergedByIngredient.set(ingredientId, {
                 ingredientId,
                 amount: amountToAdd,
+                calculatedAmount: amountToAdd,
                 ingredient: ri.ingredient,
                 unit: ri.unit,
                 baseAmount: ri.baseAmount,
