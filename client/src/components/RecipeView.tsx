@@ -26,6 +26,7 @@ interface RecipeViewProps {
   mealEntryIngredients?: any[];
   frequentAddonIds?: number[];
   availableIngredientIds?: number[];
+  allowIngredientEditing?: boolean;
 }
 
 export function RecipeView({ 
@@ -40,6 +41,7 @@ export function RecipeView({
   mealEntryIngredients,
   frequentAddonIds = [],
   availableIngredientIds = [],
+  allowIngredientEditing = true,
 }: RecipeViewProps) {
   const [isCookingMode, setIsCookingMode] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -415,7 +417,7 @@ export function RecipeView({
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-bold">Składniki</h3>
-                {onEditIngredients && (
+                {onEditIngredients && allowIngredientEditing && (
                   <Button variant="ghost" size="sm" onClick={onEditIngredients} className="text-primary hover:text-primary/80 h-7 text-xs">
                     <Settings2 className="w-3 h-3 mr-1" />
                     Edytuj składniki

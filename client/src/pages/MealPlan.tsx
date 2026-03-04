@@ -66,6 +66,7 @@ export default function MealPlan() {
   const [viewingRecipe, setViewingRecipe] = useState<any>(null);
   const [viewingMeal, setViewingMeal] = useState<any>(null);
   const [viewingServings, setViewingServings] = useState<number | undefined>(undefined);
+  const [isSharedRecipeView, setIsSharedRecipeView] = useState(false);
 
   const [isEditingIngredients, setIsEditingIngredients] = useState(false);
   const [editingMealIngredients, setEditingMealIngredients] = useState<any[]>([]);
@@ -505,10 +506,11 @@ export default function MealPlan() {
             onToggleEaten={(params: any) => toggleEaten(params)}
             onUpdateEntry={(id: number, updates: any) => updateMealEntry({ id, updates })}
             onViewRecipe={(recipe: any) => setViewingRecipe(recipe)}
-            onViewPlannedRecipe={(recipe: any, meal: any) => {
+            onViewPlannedRecipe={(recipe: any, meal: any, options?: { shared?: boolean }) => {
               setViewingRecipe(recipe);
               setViewingMeal(meal);
               setViewingServings(meal.servings);
+              setIsSharedRecipeView(!!options?.shared);
             }}
           />
         ))}
@@ -521,16 +523,19 @@ export default function MealPlan() {
           setViewingRecipe(null);
           setViewingMeal(null);
           setViewingServings(undefined);
+          setIsSharedRecipeView(false);
         }}
         plannedServings={viewingServings}
         mealEntryIngredients={viewingMeal?.ingredients}
         frequentAddonIds={viewingRecipe?.frequentAddons?.map((addon: any) => addon.ingredientId) || []}
         availableIngredientIds={availableIngredientIds}
         onEditIngredients={viewingMeal ? startEditing : undefined}
+        allowIngredientEditing={!isSharedRecipeView}
         showFooter={!viewingMeal}
         onAddToPlan={(recipe) => {
           setViewingRecipe(null);
           setViewingServings(undefined);
+          setIsSharedRecipeView(false);
           handleAdd(recipe.id);
         }}
       />
@@ -1020,6 +1025,70 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
     B: calculateSummary(personEntries.B),
   }), [personEntries]);
 
+  const sharedEntries = useMemo(() => {
+    const sharedMap = new Map<string, { A: any; B: any }>();
+
+    personEntries.A.forEach((entry: any) => {
+      if (!entry.recipeId) return;
+      const key = `${entry.mealType}__${entry.recipeId}`;
+      sharedMap.set(key, { A: entry, B: null as any });
+    });
+
+    personEntries.B.forEach((entry: any) => {
+      if (!entry.recipeId) return;
+      const key = `${entry.mealType}__${entry.recipeId}`;
+      const current = sharedMap.get(key);
+      if (current?.A) {
+        current.B = entry;
+        sharedMap.set(key, current);
+      }
+    });
+
+    return Array.from(sharedMap.values())
+      .filter((pair) => pair.A && pair.B)
+      .map((pair) => {
+        const mergedByIngredient = new Map<number, any>();
+        const mergeEntryIngredients = (entry: any) => {
+          const recipeServings = Number(entry?.recipe?.servings) || 1;
+          const entryServings = Number(entry?.servings) || 1;
+          const scale = entryServings / recipeServings;
+          const source = entry?.ingredients?.length ? entry.ingredients : (entry?.recipe?.ingredients || []);
+
+          source.forEach((ri: any) => {
+            const ingredientId = Number(ri.ingredientId);
+            if (!ingredientId) return;
+            const current = mergedByIngredient.get(ingredientId);
+            const amountToAdd = (Number(ri.amount) || 0) * scale;
+            if (current) {
+              current.amount += amountToAdd;
+            } else {
+              mergedByIngredient.set(ingredientId, {
+                ingredientId,
+                amount: amountToAdd,
+                ingredient: ri.ingredient,
+                unit: ri.unit,
+                baseAmount: ri.baseAmount,
+                alternativeAmount: ri.alternativeAmount,
+                alternativeUnit: ri.alternativeUnit,
+              });
+            }
+          });
+        };
+
+        mergeEntryIngredients(pair.A);
+        mergeEntryIngredients(pair.B);
+
+        return {
+          mealType: pair.A.mealType,
+          recipe: pair.A.recipe,
+          servings: (Number(pair.A.servings) || 1) + (Number(pair.B.servings) || 1),
+          ingredients: Array.from(mergedByIngredient.values()),
+          entryA: pair.A,
+          entryB: pair.B,
+        };
+      });
+  }, [personEntries]);
+
   const applyServingInput = (entry: any) => {
     const rawValue = servingInputs[entry.id];
     if (rawValue === undefined) return;
@@ -1087,6 +1156,34 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
       {/* Stabilized render tree for dual-person meal plan layout */}
       {isLoading ? <LoadingSpinner /> : (
         <div className="space-y-5">
+          {sharedEntries.length > 0 && (
+            <div className="space-y-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-3">
+              <div className="text-sm font-bold text-emerald-800 uppercase tracking-wider">Wspólne posiłki (Tysia + Mati)</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {sharedEntries.map((shared: any, idx: number) => (
+                  <div key={`shared-${shared.mealType}-${shared.recipe?.id}-${idx}`} className="rounded-xl border border-emerald-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                          {shared.mealType === "breakfast" ? "Śniadanie" : shared.mealType === "lunch" ? "Obiad" : shared.mealType === "dinner" ? "Kolacja" : "Przekąska"}
+                        </p>
+                        <p className="font-semibold truncate">{shared.recipe?.name}</p>
+                        <p className="text-xs text-muted-foreground">Łącznie: {shared.servings} porcji</p>
+                      </div>
+                      <button
+                        onClick={() => onViewPlannedRecipe(shared.recipe, { ...shared.entryA, servings: shared.servings, ingredients: shared.ingredients }, { shared: true })}
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                        title="Podgląd wspólny"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {people.map((person) => (
             <div key={person} className="space-y-2">
               <div className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{personName[person]}</div>

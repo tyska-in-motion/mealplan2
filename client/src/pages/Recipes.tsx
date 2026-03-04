@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { useRecipes, useCreateRecipe, useUpdateRecipe, useDeleteRecipe } from "@/hooks/use-recipes";
 import { useIngredients } from "@/hooks/use-ingredients";
-import { useAddMealEntry, useDayPlan } from "@/hooks/use-meal-plan";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useAddMealEntry, useDayPlan, useUpdateMealEntry } from "@/hooks/use-meal-plan";
+import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Search, Clock, Trash2, ChefHat, X, Eye, Edit2, CalendarPlus, Check, ChevronsUpDown, Heart } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -271,7 +270,7 @@ export default function Recipes() {
 
                 await updateMealEntry.mutateAsync({
                   id: createdEntry.id,
-                  data: {
+                  updates: {
                     ingredients: mergedIngredients,
                     servings: 1,
                   },
@@ -418,17 +417,7 @@ export default function Recipes() {
 
   const [isEditingIngredients, setIsEditingIngredients] = useState(false);
   const [editingMealIngredients, setEditingMealIngredients] = useState<any[]>([]);
-  const updateMealEntry = useMutation({
-    mutationFn: async ({ id, data }: { id: number, data: any }) => {
-      const res = await apiRequest("PATCH", `/api/meal-plan/entry/${id}`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/meal-plan/${selectedDate}`] });
-      setIsEditingIngredients(false);
-      toast({ title: "Sukces", description: "Składniki posiłku zostały zaktualizowane." });
-    }
-  });
+  const updateMealEntry = useUpdateMealEntry();
 
   const openEdit = (recipe: any) => {
     setEditingRecipe(recipe);
