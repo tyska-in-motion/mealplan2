@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import type { CreateMealEntryRequest } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, fetchWithTimeout } from "@/lib/queryClient";
 import { useToast } from "./use-toast";
 
 export function useDayPlan(date: string) {
@@ -9,7 +9,7 @@ export function useDayPlan(date: string) {
     queryKey: [api.mealPlan.getDay.path, date],
     queryFn: async () => {
       const url = buildUrl(api.mealPlan.getDay.path, { date });
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error("Failed to fetch meal plan");
       return api.mealPlan.getDay.responses[200].parse(await res.json());
     },
@@ -20,7 +20,7 @@ export function useAddMealEntry() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateMealEntryRequest) => {
-      const res = await fetch(api.mealPlan.addEntry.path, {
+      const res = await fetchWithTimeout(api.mealPlan.addEntry.path, {
         method: api.mealPlan.addEntry.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -57,7 +57,7 @@ export function useDeleteMealEntry() {
   return useMutation({
     mutationFn: async ({ id, date }: { id: number; date: string }) => {
       const url = buildUrl(api.mealPlan.deleteEntry.path, { id });
-      const res = await fetch(url, { method: api.mealPlan.deleteEntry.method });
+      const res = await fetchWithTimeout(url, { method: api.mealPlan.deleteEntry.method });
       if (!res.ok) throw new Error("Failed to delete meal");
     },
     onSuccess: (_, variables) => {
@@ -102,7 +102,7 @@ export function useCopyDayPlan() {
 
   return useMutation({
     mutationFn: async ({ sourceDate, targetDate }: { sourceDate: string; targetDate: string }) => {
-      const res = await fetch(api.mealPlan.copyDay.path, {
+      const res = await fetchWithTimeout(api.mealPlan.copyDay.path, {
         method: api.mealPlan.copyDay.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sourceDate, targetDate, replaceTarget: true }),
@@ -136,7 +136,7 @@ export function useShoppingList(startDate: string, endDate: string) {
     queryKey: [api.mealPlan.getShoppingList.path, startDate, endDate],
     queryFn: async () => {
       const url = `${api.mealPlan.getShoppingList.path}?startDate=${startDate}&endDate=${endDate}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error("Failed to fetch shopping list");
       return api.mealPlan.getShoppingList.responses[200].parse(await res.json());
     },

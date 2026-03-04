@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
+import { fetchWithTimeout } from "@/lib/queryClient";
 import type { CreateRecipeRequest } from "@shared/schema";
 
 export function useRecipes(search?: string, ingredientId?: number) {
@@ -13,7 +14,7 @@ export function useRecipes(search?: string, ingredientId?: number) {
       
       if (params.toString()) url += `?${params.toString()}`;
 
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error("Failed to fetch recipes");
       return api.recipes.list.responses[200].parse(await res.json());
     },
@@ -25,7 +26,7 @@ export function useRecipe(id: number) {
     queryKey: [api.recipes.get.path, id],
     queryFn: async () => {
       const url = buildUrl(api.recipes.get.path, { id });
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error("Failed to fetch recipe");
       return api.recipes.get.responses[200].parse(await res.json());
     },
@@ -38,7 +39,7 @@ export function useCreateRecipe() {
   return useMutation({
     mutationFn: async (data: any) => {
       // Note: Data should match the extended schema in routes (with ingredients array)
-      const res = await fetch(api.recipes.create.path, {
+      const res = await fetchWithTimeout(api.recipes.create.path, {
         method: api.recipes.create.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -61,7 +62,7 @@ export function useUpdateRecipe() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
       const url = buildUrl(api.recipes.update.path, { id });
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         method: api.recipes.update.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -85,7 +86,7 @@ export function useDeleteRecipe() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.recipes.delete.path, { id });
-      const res = await fetch(url, { method: api.recipes.delete.method });
+      const res = await fetchWithTimeout(url, { method: api.recipes.delete.method });
       if (!res.ok) throw new Error("Failed to delete recipe");
     },
     onSuccess: () => {
