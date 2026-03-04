@@ -139,7 +139,7 @@ export function RecipeView({
   };
 
   const getScaledAmount = (ri: any, isFrequentAddon = false) => {
-    if (typeof ri?.calculatedAmount === "number" && Number.isFinite(ri.calculatedAmount)) {
+    if (!isPlannedView && typeof ri?.calculatedAmount === "number" && Number.isFinite(ri.calculatedAmount)) {
       return ri.calculatedAmount;
     }
 

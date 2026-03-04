@@ -35,6 +35,7 @@ const instructionSegmentSchema = z.discriminatedUnion("type", [
     text: z.string(),
     ingredientId: z.number(),
     ingredientIds: z.array(z.number()).optional(),
+    ingredientSource: z.enum(["ingredient", "frequentAddon"]).optional(),
     multiplier: z.number().positive().optional(),
   }),
 ]);
