@@ -543,6 +543,7 @@ export default function MealPlan() {
         availableIngredientIds={availableIngredientIds}
         onEditIngredients={viewingMeal ? startEditing : undefined}
         allowIngredientEditing={!isSharedRecipeView}
+        usePrecalculatedAmounts={isSharedRecipeView}
         showFooter={!viewingMeal}
         onAddToPlan={(recipe) => {
           setViewingRecipe(null);
