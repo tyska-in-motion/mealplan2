@@ -21,6 +21,7 @@ interface RecipeViewProps {
   onAddToPlan: (recipe: any) => void;
   plannedServings?: number;
   onEditIngredients?: () => void;
+  onPlannedServingsChange?: (servings: number) => void;
   showFooter?: boolean;
   mealEntryIngredients?: any[];
   frequentAddonIds?: number[];
@@ -34,6 +35,7 @@ export function RecipeView({
   onAddToPlan, 
   plannedServings, 
   onEditIngredients,
+  onPlannedServingsChange,
   showFooter = true,
   mealEntryIngredients,
   frequentAddonIds = [],
@@ -154,6 +156,12 @@ export function RecipeView({
     return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",");
   };
 
+  const updateServings = (nextValue: number) => {
+    if (!isPlannedView || !onPlannedServingsChange) return;
+    const safeValue = Math.max(0.5, Math.round(nextValue * 2) / 2);
+    onPlannedServingsChange(safeValue);
+  };
+
   const getIngredientAmountLabel = (ri: any, isFrequentAddon = false) => {
     const grams = getScaledAmount(ri, isFrequentAddon);
     const altAmountRaw = Number(ri?.alternativeAmount);
@@ -180,9 +188,9 @@ export function RecipeView({
       )?.ri)
       .filter(Boolean)
       .map((ingredientData: any) => {
-        const amount = Math.round(getScaledAmount(ingredientData, segment.ingredientSource === "frequentAddon") * multiplier);
+        const amount = getScaledAmount(ingredientData, segment.ingredientSource === "frequentAddon") * multiplier;
         const unit = ingredientData.unit || ingredientData.ingredient?.unit || "g";
-        return `${ingredientData.ingredient?.name || segment.text}-${amount}${unit}`;
+        return `${ingredientData.ingredient?.name || segment.text}-${formatAmount(amount)}${unit}`;
       });
 
     if (labels.length === 0) return segment.text;
@@ -278,18 +286,35 @@ export function RecipeView({
               </div>
             </div>
 
-            <Button
-              className="w-full h-12 sm:h-14 text-base sm:text-xl font-bold mt-auto"
-              onClick={() => {
-                const nextIndex = Math.min(currentStepIndex + 1, Math.max(instructionSteps.length - 1, 0));
-                setCurrentStepIndex(nextIndex);
-                setIsTimerRunning(false);
-                const nextStepText = (instructionSteps[nextIndex]?.segments || []).map((segment: any) => segment.text).join("");
-                setTimerRemainingSeconds(parseDurationFromStep(nextStepText || "") * 60);
-              }}
-            >
-              Następny krok
-            </Button>
+            <div className="grid grid-cols-2 gap-2 mt-auto">
+              <Button
+                variant="outline"
+                className="h-12 sm:h-14 text-base sm:text-lg font-semibold"
+                onClick={() => {
+                  const prevIndex = Math.max(currentStepIndex - 1, 0);
+                  setCurrentStepIndex(prevIndex);
+                  setIsTimerRunning(false);
+                  const prevStepText = (instructionSteps[prevIndex]?.segments || []).map((segment: any) => segment.text).join("");
+                  setTimerRemainingSeconds(parseDurationFromStep(prevStepText || "") * 60);
+                }}
+                disabled={currentStepIndex <= 0}
+              >
+                Poprzedni krok
+              </Button>
+              <Button
+                className="h-12 sm:h-14 text-base sm:text-lg font-bold"
+                onClick={() => {
+                  const nextIndex = Math.min(currentStepIndex + 1, Math.max(instructionSteps.length - 1, 0));
+                  setCurrentStepIndex(nextIndex);
+                  setIsTimerRunning(false);
+                  const nextStepText = (instructionSteps[nextIndex]?.segments || []).map((segment: any) => segment.text).join("");
+                  setTimerRemainingSeconds(parseDurationFromStep(nextStepText || "") * 60);
+                }}
+                disabled={currentStepIndex >= Math.max(instructionSteps.length - 1, 0)}
+              >
+                Następny krok
+              </Button>
+            </div>
 
           </div>
         ) : (
@@ -313,6 +338,25 @@ export function RecipeView({
               <span className="flex items-center gap-1 bg-primary/10 text-primary font-bold px-2 py-1 rounded-lg text-xs">
                 {isPlannedView ? `${servingsToUse} zaplanowanych porcji` : `${recipeServings} porcji`}
               </span>
+              {isPlannedView && onPlannedServingsChange && (
+                <div className="flex items-center gap-1 bg-secondary/60 px-2 py-1 rounded-lg text-xs">
+                  <button
+                    className="h-5 w-5 rounded-full border border-border text-[11px] leading-none"
+                    onClick={() => updateServings(servingsToUse - 0.5)}
+                    title="Zmniejsz porcje"
+                  >
+                    −
+                  </button>
+                  <span className="font-semibold min-w-12 text-center">{formatAmount(servingsToUse)}</span>
+                  <button
+                    className="h-5 w-5 rounded-full border border-border text-[11px] leading-none"
+                    onClick={() => updateServings(servingsToUse + 0.5)}
+                    title="Zwiększ porcje"
+                  >
+                    +
+                  </button>
+                </div>
+              )}
               {!isPlannedView && (
                 <span className="flex items-center gap-1 bg-amber-100/60 text-amber-900 font-semibold px-2 py-1 rounded-lg text-xs">
                   {withAddonsCaloriesPerServing > baseCaloriesPerServing
