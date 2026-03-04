@@ -85,9 +85,24 @@ export function RecipeView({
       const isFrequentAddonId = frequentAddonSet.has(id);
       const recipeCount = recipeIngredientCounts.get(id) || 0;
       const isFrequentAddon = isFrequentAddonId && nextOccurrence > recipeCount;
-      return { ri, isFrequentAddon };
+
+      const matchingRecipeIngredients = (recipe?.ingredients || []).filter((item: any) => Number(item?.ingredientId) === id);
+      const matchingFrequentAddons = (recipe?.frequentAddons || []).filter((item: any) => Number(item?.ingredientId) === id);
+      const sourceCandidates = [...matchingRecipeIngredients, ...matchingFrequentAddons];
+      const source = sourceCandidates[nextOccurrence - 1] || sourceCandidates[0] || {};
+
+      const scalingIngredient = {
+        ...source,
+        ...ri,
+        baseAmount: Number(ri?.baseAmount ?? ri?.amount ?? source?.baseAmount ?? source?.amount ?? 0) || 0,
+        scalingType: ri?.scalingType ?? source?.scalingType ?? "LINEAR",
+        scalingFormula: ri?.scalingFormula ?? source?.scalingFormula,
+        stepThresholds: ri?.stepThresholds ?? source?.stepThresholds,
+      };
+
+      return { ri, isFrequentAddon, scalingIngredient };
     });
-  }, [baseIngredients, frequentAddonSet, recipeIngredientCounts]);
+  }, [baseIngredients, frequentAddonSet, recipeIngredientCounts, recipe?.ingredients, recipe?.frequentAddons]);
 
   const currentStep = instructionSteps[currentStepIndex];
   const currentStepText = (currentStep?.segments || []).map((segment: any) => segment.text).join("") || "";
@@ -142,7 +157,7 @@ export function RecipeView({
     return `${mins}:${secs}`;
   };
 
-  const getScaledAmount = (ri: any, isFrequentAddon = false) => {
+  const getScaledAmount = (ri: any, isFrequentAddon = false, scalingIngredient?: any) => {
     if (usePrecalculatedAmounts && typeof ri?.calculatedAmount === "number" && Number.isFinite(ri.calculatedAmount)) {
       return ri.calculatedAmount;
     }
@@ -151,11 +166,8 @@ export function RecipeView({
       return ri.calculatedAmount;
     }
 
-    if (isPlannedView && isFrequentAddon) {
-      return Number(ri?.baseAmount ?? ri?.amount ?? 0) || 0;
-    }
-
-    return calculateScaledAmount(ri, servingsToUse, recipeServings);
+    const ingredientForScaling = scalingIngredient || ri;
+    return calculateScaledAmount(ingredientForScaling, servingsToUse, recipeServings);
   };
 
   const formatAmount = (value: number) => {
@@ -170,8 +182,8 @@ export function RecipeView({
     onPlannedServingsChange(safeValue);
   };
 
-  const getIngredientAmountLabel = (ri: any, isFrequentAddon = false) => {
-    const grams = getScaledAmount(ri, isFrequentAddon);
+  const getIngredientAmountLabel = (ri: any, isFrequentAddon = false, scalingIngredient?: any) => {
+    const grams = getScaledAmount(ri, isFrequentAddon, scalingIngredient);
     const altAmountRaw = Number(ri?.alternativeAmount);
     const altUnit = (ri?.alternativeUnit || "").trim();
 
@@ -193,12 +205,12 @@ export function RecipeView({
       .map((id) => ingredientRows.find(({ ri, isFrequentAddon }: any) =>
         Number(ri.ingredientId) === Number(id) &&
         (segment.ingredientSource === "frequentAddon" ? isFrequentAddon : !isFrequentAddon)
-      )?.ri)
+      ))
       .filter(Boolean)
-      .map((ingredientData: any) => {
-        const amount = getScaledAmount(ingredientData, segment.ingredientSource === "frequentAddon") * multiplier;
-        const unit = ingredientData.unit || ingredientData.ingredient?.unit || "g";
-        return `${ingredientData.ingredient?.name || segment.text}-${formatAmount(amount)}${unit}`;
+      .map((ingredientRow: any) => {
+        const amount = getScaledAmount(ingredientRow.ri, segment.ingredientSource === "frequentAddon", ingredientRow.scalingIngredient) * multiplier;
+        const unit = ingredientRow.ri.unit || ingredientRow.ri.ingredient?.unit || "g";
+        return `${ingredientRow.ri.ingredient?.name || segment.text}-${formatAmount(amount)}${unit}`;
       });
 
     if (labels.length === 0) return segment.text;
@@ -381,7 +393,7 @@ export function RecipeView({
               <p className="text-xl font-bold text-primary">
                 {Math.round(ingredientRows.reduce((sum: number, row: any) => {
                   if (!row.ri?.ingredient) return sum;
-                  const amount = getScaledAmount(row.ri, row.isFrequentAddon);
+                  const amount = getScaledAmount(row.ri, row.isFrequentAddon, row.scalingIngredient);
                   return sum + (row.ri.ingredient.calories * amount / 100);
                 }, 0))}
               </p>
@@ -392,7 +404,7 @@ export function RecipeView({
               <p className="text-xl font-bold">
                 {Math.round(ingredientRows.reduce((sum: number, row: any) => {
                   if (!row.ri?.ingredient) return sum;
-                  const amount = getScaledAmount(row.ri, row.isFrequentAddon);
+                  const amount = getScaledAmount(row.ri, row.isFrequentAddon, row.scalingIngredient);
                   return sum + (row.ri.ingredient.protein * amount / 100);
                 }, 0))}g
               </p>
@@ -402,7 +414,7 @@ export function RecipeView({
               <p className="text-xl font-bold">
                 {Math.round(ingredientRows.reduce((sum: number, row: any) => {
                   if (!row.ri?.ingredient) return sum;
-                  const amount = getScaledAmount(row.ri, row.isFrequentAddon);
+                  const amount = getScaledAmount(row.ri, row.isFrequentAddon, row.scalingIngredient);
                   return sum + (row.ri.ingredient.carbs * amount / 100);
                 }, 0))}g
               </p>
@@ -412,7 +424,7 @@ export function RecipeView({
               <p className="text-xl font-bold">
                 {Math.round(ingredientRows.reduce((sum: number, row: any) => {
                   if (!row.ri?.ingredient) return sum;
-                  const amount = getScaledAmount(row.ri, row.isFrequentAddon);
+                  const amount = getScaledAmount(row.ri, row.isFrequentAddon, row.scalingIngredient);
                   return sum + (row.ri.ingredient.fat * amount / 100);
                 }, 0))}g
               </p>
@@ -431,7 +443,7 @@ export function RecipeView({
                 )}
               </div>
               <ul className="space-y-2">
-                {ingredientRows.map(({ ri, isFrequentAddon }: any, idx: number) => {
+                {ingredientRows.map(({ ri, isFrequentAddon, scalingIngredient }: any, idx: number) => {
                   const isAvailable = availableIngredientSet.has(Number(ri.ingredientId));
                   const ingredientItemClass = isFrequentAddon
                     ? "border-emerald-300 bg-emerald-50/70"
@@ -459,7 +471,7 @@ export function RecipeView({
                         )}
                       </span>
                       <span className="font-medium">
-                        {getIngredientAmountLabel(ri, isFrequentAddon)}
+                        {getIngredientAmountLabel(ri, isFrequentAddon, scalingIngredient)}
                       </span>
                     </div>
                     {Number(ri.ingredient?.unitWeight || 0) > 0 && (
