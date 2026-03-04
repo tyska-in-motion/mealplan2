@@ -72,7 +72,14 @@ export const recipeFrequentAddons = pgTable("recipe_frequent_addons", {
   id: serial("id").primaryKey(),
   recipeId: integer("recipe_id").notNull(),
   ingredientId: integer("ingredient_id").notNull(),
-  amount: integer("amount").notNull(), // Suggested add-on amount in grams
+  amount: integer("amount").notNull(), // Legacy amount (kept for backward compatibility)
+  baseAmount: real("base_amount").notNull(),
+  alternativeAmount: real("alternative_amount"),
+  alternativeUnit: text("alternative_unit"),
+  unit: text("unit").notNull().default("g"),
+  scalingType: ingredientScalingTypeEnum("scaling_type").notNull().default("LINEAR"),
+  scalingFormula: text("scaling_formula"),
+  stepThresholds: jsonb("step_thresholds").$type<{ minServings: number; maxServings?: number | null; amount: number }[]>(),
 });
 
 export const mealEntries = pgTable("meal_entries", {

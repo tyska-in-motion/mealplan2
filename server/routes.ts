@@ -239,6 +239,13 @@ export async function registerRoutes(
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),
           amount: z.number(),
+          baseAmount: z.number().min(0).optional(),
+          unit: z.string().min(1).optional(),
+          alternativeAmount: z.number().min(0).optional(),
+          alternativeUnit: z.string().min(1).optional(),
+          scalingType: z.enum(["LINEAR", "FIXED", "STEP", "FORMULA"]).default("LINEAR"),
+          scalingFormula: z.string().optional(),
+          stepThresholds: z.array(stepThresholdSchema).optional(),
         })).optional().default([]),
       }).parse(req.body);
       
@@ -269,6 +276,13 @@ export async function registerRoutes(
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),
           amount: z.number(),
+          baseAmount: z.number().min(0).optional(),
+          unit: z.string().min(1).optional(),
+          alternativeAmount: z.number().min(0).optional(),
+          alternativeUnit: z.string().min(1).optional(),
+          scalingType: z.enum(["LINEAR", "FIXED", "STEP", "FORMULA"]).default("LINEAR"),
+          scalingFormula: z.string().optional(),
+          stepThresholds: z.array(stepThresholdSchema).optional(),
         })).optional().default([]),
       }).parse(req.body);
       
