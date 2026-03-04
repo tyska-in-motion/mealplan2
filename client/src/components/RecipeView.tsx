@@ -118,6 +118,11 @@ export function RecipeView({
     if (typeof ri?.calculatedAmount === "number" && Number.isFinite(ri.calculatedAmount)) {
       return ri.calculatedAmount;
     }
+
+    if (isPlannedView && frequentAddonSet.has(Number(ri?.ingredientId))) {
+      return Number(ri?.baseAmount ?? ri?.amount ?? 0) || 0;
+    }
+
     return calculateScaledAmount(ri, servingsToUse, recipeServings);
   };
 
