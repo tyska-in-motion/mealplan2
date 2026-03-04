@@ -273,15 +273,10 @@ export default function MealPlan() {
         }));
 
         selectedAddons.forEach((addon: any) => {
-          const existing = mergedIngredients.find((item: any) => item.ingredientId === addon.ingredientId);
-          if (existing) {
-            existing.amount += Number(addon.amount) || 0;
-          } else {
-            mergedIngredients.push({
-              ingredientId: addon.ingredientId,
-              amount: Number(addon.amount) || 0,
-            });
-          }
+          mergedIngredients.push({
+            ingredientId: addon.ingredientId,
+            amount: Number(addon.amount) || 0,
+          });
         });
 
         updateMealEntry({
@@ -936,14 +931,6 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
   const { data: dayPlan, isLoading } = useDayPlan(dateStr);
   const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
 
-  const getEntryIngredientServingFactor = (entry: any, ingredientId: number) => {
-    const entryServings = Number(entry?.servings) || 1;
-    const recipeServings = Number(entry?.recipe?.servings) || 1;
-    const frequentAddonIds = new Set<number>(((entry?.recipe?.frequentAddons) || []).map((addon: any) => Number(addon.ingredientId)));
-    if (frequentAddonIds.has(Number(ingredientId))) return 1;
-    return entryServings / recipeServings;
-  };
-
   const calculateSummary = (entries: any[]) => {
     let calories = 0;
     let protein = 0;
@@ -956,9 +943,26 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
       const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
 
       if (ingredientsToUse.length > 0) {
+        const entryServings = Number(entry?.servings) || 1;
+        const recipeServings = Number(entry?.recipe?.servings) || 1;
+        const frequentAddonIds = new Set<number>(((entry?.recipe?.frequentAddons) || []).map((addon: any) => Number(addon.ingredientId)));
+        const recipeIngredientCounts = (entry?.recipe?.ingredients || []).reduce((acc: Map<number, number>, ingredient: any) => {
+          const id = Number(ingredient?.ingredientId);
+          if (!Number.isFinite(id)) return acc;
+          acc.set(id, (acc.get(id) || 0) + 1);
+          return acc;
+        }, new Map<number, number>());
+        const occurrenceMap = new Map<number, number>();
+
         ingredientsToUse.forEach((ri: any) => {
           if (!ri.ingredient) return;
-          const multiplier = (ri.amount / 100) * getEntryIngredientServingFactor(entry, ri.ingredientId);
+          const ingredientId = Number(ri.ingredientId);
+          const occurrence = (occurrenceMap.get(ingredientId) || 0) + 1;
+          occurrenceMap.set(ingredientId, occurrence);
+          const recipeCount = recipeIngredientCounts.get(ingredientId) || 0;
+          const isFrequentAddon = frequentAddonIds.has(ingredientId) && occurrence > recipeCount;
+          const servingFactor = isFrequentAddon ? 1 : (entryServings / recipeServings);
+          const multiplier = (ri.amount / 100) * servingFactor;
           calories += (ri.ingredient.calories || 0) * multiplier;
           protein += (ri.ingredient.protein || 0) * multiplier;
           carbs += (ri.ingredient.carbs || 0) * multiplier;
