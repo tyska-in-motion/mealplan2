@@ -1101,43 +1101,24 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
     return Array.from(sharedMap.values())
       .filter((pair) => pair.A && pair.B)
       .map((pair) => {
-        const mergedByIngredient = new Map<number, any>();
-        const mergeEntryIngredients = (entry: any) => {
-          const recipeServings = Number(entry?.recipe?.servings) || 1;
-          const entryServings = Number(entry?.servings) || 1;
-          const source = entry?.ingredients?.length ? entry.ingredients : (entry?.recipe?.ingredients || []);
+        const recipeServings = Number(pair.A?.recipe?.servings) || 1;
+        const totalServings = (Number(pair.A?.servings) || 1) + (Number(pair.B?.servings) || 1);
+        const sourceIngredients = pair.A?.recipe?.ingredients || [];
 
-          source.forEach((ri: any) => {
-            const ingredientId = Number(ri.ingredientId);
-            if (!ingredientId) return;
-            const current = mergedByIngredient.get(ingredientId);
-            const amountToAdd = getEffectiveIngredientAmount(ri, entry);
-            if (current) {
-              current.amount += amountToAdd;
-              current.calculatedAmount += amountToAdd;
-            } else {
-              mergedByIngredient.set(ingredientId, {
-                ingredientId,
-                amount: amountToAdd,
-                calculatedAmount: amountToAdd,
-                ingredient: ri.ingredient,
-                unit: ri.unit,
-                baseAmount: ri.baseAmount,
-                alternativeAmount: ri.alternativeAmount,
-                alternativeUnit: ri.alternativeUnit,
-              });
-            }
-          });
-        };
-
-        mergeEntryIngredients(pair.A);
-        mergeEntryIngredients(pair.B);
+        const scaledIngredients = sourceIngredients.map((ri: any) => {
+          const scaledAmount = calculateScaledAmount(ri, totalServings, recipeServings);
+          return {
+            ...ri,
+            amount: scaledAmount,
+            calculatedAmount: scaledAmount,
+          };
+        });
 
         return {
           mealType: pair.A.mealType,
           recipe: pair.A.recipe,
-          servings: (Number(pair.A.servings) || 1) + (Number(pair.B.servings) || 1),
-          ingredients: Array.from(mergedByIngredient.values()),
+          servings: totalServings,
+          ingredients: scaledIngredients,
           entryA: pair.A,
           entryB: pair.B,
         };
