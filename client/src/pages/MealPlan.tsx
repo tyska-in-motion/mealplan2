@@ -105,12 +105,33 @@ export default function MealPlan() {
     
     const entryServings = Number(viewingMeal.servings) || 1;
     const recipeServings = Number(viewingRecipe.servings) || 1;
-    setEditingMealIngredients(currentIngredients.map((ri: any) => ({
-      ingredientId: ri.ingredientId,
-      amount: Math.round(ri.amount * getIngredientServingFactor(ri.ingredientId, entryServings, recipeServings)),
-      ingredient: ri.ingredient,
-      isFrequentAddon: frequentAddonIngredientIds.has(ri.ingredientId),
-    })));
+    const recipeIngredientCounts = (viewingRecipe.ingredients || []).reduce((acc: Map<number, number>, ingredient: any) => {
+      const ingredientId = Number(ingredient?.ingredientId);
+      if (!Number.isFinite(ingredientId)) return acc;
+      acc.set(ingredientId, (acc.get(ingredientId) || 0) + 1);
+      return acc;
+    }, new Map<number, number>());
+    const occurrenceMap = new Map<number, number>();
+
+    const mappedIngredients = currentIngredients.map((ri: any) => {
+      const ingredientId = Number(ri.ingredientId);
+      const occurrence = (occurrenceMap.get(ingredientId) || 0) + 1;
+      occurrenceMap.set(ingredientId, occurrence);
+      const recipeCount = recipeIngredientCounts.get(ingredientId) || 0;
+      const isFrequentAddon = frequentAddonIngredientIds.has(ingredientId) && occurrence > recipeCount;
+
+      return {
+        ingredientId: ri.ingredientId,
+        amount: Math.round(ri.amount * (isFrequentAddon ? 1 : (entryServings / recipeServings))),
+        ingredient: ri.ingredient,
+        isFrequentAddon,
+      };
+    });
+
+    setEditingMealIngredients([
+      ...mappedIngredients.filter((item: any) => !item.isFrequentAddon),
+      ...mappedIngredients.filter((item: any) => item.isFrequentAddon),
+    ]);
     setIsEditingIngredients(true);
   };
 
@@ -124,7 +145,7 @@ export default function MealPlan() {
     if (!addonIngredientId || addonStep <= 0) return;
 
     setEditingMealIngredients((prev) => {
-      const existingIndex = prev.findIndex((item: any) => Number(item.ingredientId) === addonIngredientId);
+      const existingIndex = prev.findIndex((item: any) => Number(item.ingredientId) === addonIngredientId && item.isFrequentAddon);
       if (existingIndex >= 0) {
         return prev.map((item: any, idx: number) =>
           idx === existingIndex
@@ -526,7 +547,7 @@ export default function MealPlan() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Najczęstsze dodatki (opcjonalnie)</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {frequentAddonDefinitions.map((addon: any) => {
-                    const isAlreadyAdded = editingMealIngredients.some((item: any) => Number(item.ingredientId) === Number(addon.ingredientId));
+                    const isAlreadyAdded = editingMealIngredients.some((item: any) => Number(item.ingredientId) === Number(addon.ingredientId) && item.isFrequentAddon);
                     return (
                       <Button
                         key={`edit-addon-${addon.ingredientId}`}
