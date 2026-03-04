@@ -27,6 +27,7 @@ interface RecipeViewProps {
   frequentAddonIds?: number[];
   availableIngredientIds?: number[];
   allowIngredientEditing?: boolean;
+  usePrecalculatedAmounts?: boolean;
 }
 
 export function RecipeView({ 
@@ -42,6 +43,7 @@ export function RecipeView({
   frequentAddonIds = [],
   availableIngredientIds = [],
   allowIngredientEditing = true,
+  usePrecalculatedAmounts = false,
 }: RecipeViewProps) {
   const [isCookingMode, setIsCookingMode] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -141,6 +143,10 @@ export function RecipeView({
   };
 
   const getScaledAmount = (ri: any, isFrequentAddon = false) => {
+    if (usePrecalculatedAmounts && typeof ri?.calculatedAmount === "number" && Number.isFinite(ri.calculatedAmount)) {
+      return ri.calculatedAmount;
+    }
+
     if (!isPlannedView && typeof ri?.calculatedAmount === "number" && Number.isFinite(ri.calculatedAmount)) {
       return ri.calculatedAmount;
     }
