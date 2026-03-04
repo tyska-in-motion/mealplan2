@@ -64,6 +64,8 @@ export default function Dashboard() {
   const frequentAddonIngredientIds = useMemo(() => new Set(
     (viewingRecipe?.frequentAddons || []).map((addon: any) => Number(addon.ingredientId))
   ), [viewingRecipe?.frequentAddons]);
+  const frequentAddonDefinitions = viewingRecipe?.frequentAddons || [];
+  const getAddonBaseAmount = (addon: any) => Number(addon?.baseAmount ?? addon?.amount) || 0;
 
   const availableIngredientIds = useMemo(() => {
     const alwaysAtHomeIds = (allAvailableIngredients || [])
@@ -89,17 +91,41 @@ export default function Dashboard() {
 
 
   const startEditing = () => {
+    if (!viewingRecipe || !viewingMeal) return;
+
     const currentIngredients = (viewingMeal?.ingredients && viewingMeal.ingredients.length > 0)
       ? viewingMeal.ingredients
       : viewingRecipe.ingredients;
     
     const entryServings = viewingMeal ? (Number(viewingMeal.servings) || 1) : 1;
     const recipeServings = Number(viewingRecipe.servings) || 1;
-    setEditingMealIngredients(currentIngredients.map((ri: any) => ({
-      ingredientId: ri.ingredientId,
-      amount: Math.round(ri.amount * getIngredientServingFactor(ri.ingredientId, entryServings, recipeServings)),
-      ingredient: ri.ingredient
-    })));
+    const recipeIngredientCounts = (viewingRecipe.ingredients || []).reduce((acc: Map<number, number>, ingredient: any) => {
+      const ingredientId = Number(ingredient?.ingredientId);
+      if (!Number.isFinite(ingredientId)) return acc;
+      acc.set(ingredientId, (acc.get(ingredientId) || 0) + 1);
+      return acc;
+    }, new Map<number, number>());
+    const occurrenceMap = new Map<number, number>();
+
+    const mappedIngredients = currentIngredients.map((ri: any) => {
+      const ingredientId = Number(ri.ingredientId);
+      const occurrence = (occurrenceMap.get(ingredientId) || 0) + 1;
+      occurrenceMap.set(ingredientId, occurrence);
+      const recipeCount = recipeIngredientCounts.get(ingredientId) || 0;
+      const isFrequentAddon = frequentAddonIngredientIds.has(ingredientId) && occurrence > recipeCount;
+
+      return {
+        ingredientId: ri.ingredientId,
+        amount: Math.round(ri.amount * (isFrequentAddon ? 1 : (entryServings / recipeServings))),
+        ingredient: ri.ingredient,
+        isFrequentAddon,
+      };
+    });
+
+    setEditingMealIngredients([
+      ...mappedIngredients.filter((item: any) => !item.isFrequentAddon),
+      ...mappedIngredients.filter((item: any) => item.isFrequentAddon),
+    ]);
     setIsEditingIngredients(true);
   };
 
@@ -107,17 +133,62 @@ export default function Dashboard() {
     setEditingMealIngredients([...editingMealIngredients, { ingredientId: 0, amount: 100, ingredient: null }]);
   };
 
+  const addFrequentAddonToEdit = (addon: any) => {
+    const addonIngredientId = Number(addon.ingredientId);
+    const addonStep = getAddonBaseAmount(addon);
+    if (!addonIngredientId || addonStep <= 0) return;
+
+    setEditingMealIngredients((prev) => {
+      const existingIndex = prev.findIndex((item: any) => Number(item.ingredientId) === addonIngredientId && item.isFrequentAddon);
+      if (existingIndex >= 0) {
+        return prev.map((item: any, idx: number) =>
+          idx === existingIndex
+            ? { ...item, amount: Number(item.amount || 0) + addonStep, isFrequentAddon: true }
+            : item
+        );
+      }
+
+      return [...prev, {
+        ingredientId: addonIngredientId,
+        amount: addonStep,
+        ingredient: addon.ingredient || null,
+        isFrequentAddon: true,
+      }];
+    });
+  };
+
   const updateIngredientInEdit = (index: number, updates: any) => {
     const newIngredients = [...editingMealIngredients];
     newIngredients[index] = { ...newIngredients[index], ...updates };
     if (updates.ingredientId && allAvailableIngredients) {
       newIngredients[index].ingredient = allAvailableIngredients.find((i: any) => i.id === updates.ingredientId);
+      newIngredients[index].isFrequentAddon = frequentAddonIngredientIds.has(Number(updates.ingredientId));
     }
     setEditingMealIngredients(newIngredients);
   };
 
   const removeIngredientFromEdit = (index: number) => {
     setEditingMealIngredients(editingMealIngredients.filter((_, i) => i !== index));
+  };
+
+  const updateViewingMealServings = (nextServings: number) => {
+    if (!viewingMeal) return;
+    const safeServings = Math.max(0.5, Math.round(nextServings * 2) / 2);
+    setViewingPlannedServings(safeServings);
+    setViewingMeal((prev: any) => (prev ? { ...prev, servings: safeServings } : prev));
+    updateMealEntry({
+      id: viewingMeal.id,
+      updates: {
+        servings: safeServings,
+        isEaten: !!viewingMeal.isEaten,
+        date: viewingMeal.date,
+        mealType: viewingMeal.mealType,
+      },
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: [`/api/meal-plan/${dateStr}`] });
+      },
+    });
   };
 
   const saveIngredients = () => {
@@ -644,6 +715,7 @@ export default function Dashboard() {
         frequentAddonIds={viewingRecipe?.frequentAddons?.map((addon: any) => addon.ingredientId) || []}
         availableIngredientIds={availableIngredientIds}
         onEditIngredients={startEditing}
+        onPlannedServingsChange={viewingMeal ? updateViewingMealServings : undefined}
         showFooter={false}
         onAddToPlan={() => {}} 
       />
@@ -832,8 +904,37 @@ export default function Dashboard() {
           </DialogHeader>
           
           <div className="flex-1 overflow-y-auto py-4 space-y-4">
+            {frequentAddonDefinitions.length > 0 && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Najczęstsze dodatki (opcjonalnie)</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {frequentAddonDefinitions.map((addon: any) => {
+                    const isAlreadyAdded = editingMealIngredients.some((item: any) => Number(item.ingredientId) === Number(addon.ingredientId) && item.isFrequentAddon);
+                    return (
+                      <Button
+                        key={`edit-addon-${addon.ingredientId}`}
+                        type="button"
+                        size="sm"
+                        variant={isAlreadyAdded ? "secondary" : "outline"}
+                        className={cn("h-8", isAlreadyAdded && "border-emerald-300 bg-emerald-100 text-emerald-900")}
+                        onClick={() => addFrequentAddonToEdit(addon)}
+                      >
+                        + {Math.round(getAddonBaseAmount(addon))}g {addon.ingredient?.name || "Składnik"}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {editingMealIngredients.map((item, idx) => (
-              <div key={idx} className="flex gap-2 items-start bg-secondary/20 p-3 rounded-xl">
+              <div
+                key={idx}
+                className={cn(
+                  "flex gap-2 items-start bg-secondary/20 p-3 rounded-xl border border-transparent",
+                  item.isFrequentAddon && "border-emerald-300 bg-emerald-50/50"
+                )}
+              >
                 <div className="flex-1">
                   <Popover>
                     <PopoverTrigger asChild>
@@ -874,6 +975,11 @@ export default function Dashboard() {
                       </Command>
                     </PopoverContent>
                   </Popover>
+                  {item.isFrequentAddon && (
+                    <span className="mt-1 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                      Najczęstszy dodatek
+                    </span>
+                  )}
                 </div>
                 
                 <div className="w-32">
