@@ -89,6 +89,12 @@ export default function Dashboard() {
     return entryServings / recipeServings;
   };
 
+  const getEffectiveIngredientAmount = (entry: any, ri: any) => {
+    if (typeof ri?.calculatedAmount === "number") return ri.calculatedAmount;
+    const factor = getEntryIngredientServingFactor(entry, ri.ingredientId);
+    return (Number(ri?.amount) || 0) * factor;
+  };
+
 
   const startEditing = () => {
     if (!viewingRecipe || !viewingMeal) return;
@@ -298,12 +304,12 @@ export default function Dashboard() {
       const entryIngredients = entry.ingredients.length > 0 ? entry.ingredients : (recipe?.ingredients || []);
       const stats = entryIngredients.reduce((sum: any, ri: any) => {
         if (!ri.ingredient) return sum;
-        const factor = getEntryIngredientServingFactor(entry, ri.ingredientId);
+        const effectiveAmount = getEffectiveIngredientAmount(entry, ri);
         return {
-          calories: sum.calories + (ri.ingredient.calories * ri.amount / 100) * factor,
-          protein: sum.protein + (ri.ingredient.protein * ri.amount / 100) * factor,
-          carbs: sum.carbs + (ri.ingredient.carbs * ri.amount / 100) * factor,
-          fat: sum.fat + (ri.ingredient.fat * ri.amount / 100) * factor,
+          calories: sum.calories + (ri.ingredient.calories * effectiveAmount / 100),
+          protein: sum.protein + (ri.ingredient.protein * effectiveAmount / 100),
+          carbs: sum.carbs + (ri.ingredient.carbs * effectiveAmount / 100),
+          fat: sum.fat + (ri.ingredient.fat * effectiveAmount / 100),
         };
       }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
@@ -356,8 +362,8 @@ export default function Dashboard() {
     const recipe = entry.recipe;
     const entryIngredients = entry.ingredients.length > 0 ? entry.ingredients : (recipe?.ingredients || []);
     return acc + entryIngredients.reduce((sum: number, ri: any) => {
-      const factor = getEntryIngredientServingFactor(entry, ri.ingredientId);
-      return sum + ((ri.ingredient?.price || 0) * ri.amount / 100) * factor;
+      const effectiveAmount = getEffectiveIngredientAmount(entry, ri);
+      return sum + ((ri.ingredient?.price || 0) * effectiveAmount / 100);
     }, 0);
   }, 0) || 0;
 
@@ -751,9 +757,14 @@ export default function Dashboard() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">Menu na {isToday ? "dziś" : format(date, "eeee", { locale: pl })}</h2>
-          <Link href="/meal-plan">
-            <span className="text-primary text-sm font-semibold hover:underline cursor-pointer">Edytuj Plan</span>
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link href={`/meal-plan?date=${dateStr}#shared-meals`}>
+              <span className="text-emerald-700 text-sm font-semibold hover:underline cursor-pointer">Wspólne posiłki</span>
+            </Link>
+            <Link href="/meal-plan">
+              <span className="text-primary text-sm font-semibold hover:underline cursor-pointer">Edytuj Plan</span>
+            </Link>
+          </div>
         </div>
 
         {allEntries.length === 0 ? (
@@ -861,8 +872,8 @@ export default function Dashboard() {
                                 {meal.recipe ? (() => {
                                   const total = (meal.ingredients && meal.ingredients.length > 0 ? meal.ingredients : (meal.recipe?.ingredients || [])).reduce((sum: number, ri: any) => {
                                     if (!ri.ingredient) return sum;
-                                    const factor = getEntryIngredientServingFactor(meal, ri.ingredientId);
-                                    return sum + (ri.ingredient.calories * ri.amount / 100) * factor;
+                                    const effectiveAmount = getEffectiveIngredientAmount(meal, ri);
+                                    return sum + (ri.ingredient.calories * effectiveAmount / 100);
                                   }, 0);
                                   return Math.round(total);
                                 })() : ((meal.customCalories || 0) * (Number(meal.servings) || 1))} kcal
@@ -873,8 +884,8 @@ export default function Dashboard() {
                                   {(() => {
                                     const total = (meal.ingredients && meal.ingredients.length > 0 ? meal.ingredients : (meal.recipe?.ingredients || [])).reduce((sum: number, ri: any) => {
                                       if (!ri.ingredient) return sum;
-                                      const factor = getEntryIngredientServingFactor(meal, ri.ingredientId);
-                                      return sum + (ri.ingredient.price * ri.amount / 100) * factor;
+                                      const effectiveAmount = getEffectiveIngredientAmount(meal, ri);
+                                      return sum + (ri.ingredient.price * effectiveAmount / 100);
                                     }, 0);
                                     return Math.round(total);
                                   })()} PLN
