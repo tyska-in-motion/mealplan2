@@ -191,7 +191,7 @@ export async function registerRoutes(
       r.ingredients.forEach(ri => {
         if (!ri.ingredient) return;
         const scaledAmount = calculateScaledAmount(ri as any, Number(r.servings) || 1, Number(r.servings) || 1);
-        const multiplier = scaledAmount / 100 / (r.servings || 1);
+        const multiplier = scaledAmount / 100;
         stats.calories += ri.ingredient.calories * multiplier;
         stats.protein += ri.ingredient.protein * multiplier;
         stats.carbs += ri.ingredient.carbs * multiplier;
