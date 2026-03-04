@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { RecipeView } from "@/components/RecipeView";
 import { useToast } from "@/hooks/use-toast";
 import { Check, ChevronsUpDown } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +47,9 @@ export default function MealPlan() {
   const { mutate: updateMealEntry, isPending: isSaving } = useUpdateMealEntry();
   const { mutate: copyDayPlan, isPending: isCopyingDay } = useCopyDayPlan();
   const { data: allAvailableIngredients } = useIngredients();
+  const { data: shoppingListExcludedIds = [] } = useQuery<number[]>({
+    queryKey: ["/api/shopping-list/exclusions"],
+  });
   const { toast } = useToast();
   
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -77,6 +81,20 @@ export default function MealPlan() {
     frequentAddonDefinitions.map((addon: any) => addon.ingredientId)
   ), [frequentAddonDefinitions]);
 
+  const availableIngredientIds = useMemo(() => {
+    const alwaysAtHomeIds = (allAvailableIngredients || [])
+      .filter((ingredient: any) => ingredient.alwaysAtHome)
+      .map((ingredient: any) => Number(ingredient.id));
+
+    const manualIds = (shoppingListExcludedIds || []).map((id: number) => Number(id));
+    return Array.from(new Set([...alwaysAtHomeIds, ...manualIds]));
+  }, [allAvailableIngredients, shoppingListExcludedIds]);
+
+  const getIngredientServingFactor = (ingredientId: number, entryServings: number, recipeServings: number) => {
+    if (frequentAddonIngredientIds.has(Number(ingredientId))) return 1;
+    return entryServings / recipeServings;
+  };
+
   const startEditing = () => {
     if (!viewingRecipe || !viewingMeal) return;
 
@@ -86,11 +104,9 @@ export default function MealPlan() {
     
     const entryServings = Number(viewingMeal.servings) || 1;
     const recipeServings = Number(viewingRecipe.servings) || 1;
-    const factor = entryServings / recipeServings;
-
     setEditingMealIngredients(currentIngredients.map((ri: any) => ({
       ingredientId: ri.ingredientId,
-      amount: Math.round(ri.amount * factor),
+      amount: Math.round(ri.amount * getIngredientServingFactor(ri.ingredientId, entryServings, recipeServings)),
       ingredient: ri.ingredient,
       isFrequentAddon: frequentAddonIngredientIds.has(ri.ingredientId),
     })));
@@ -144,13 +160,11 @@ export default function MealPlan() {
     
     const entryServings = Number(viewingMeal.servings) || 1;
     const recipeServings = Number(viewingRecipe.servings) || 1;
-    const factor = entryServings / recipeServings;
-
     const ingredientsData = editingMealIngredients
       .filter(i => i.ingredientId > 0)
       .map(i => ({ 
         ingredientId: Number(i.ingredientId), 
-        amount: Math.round(Number(i.amount) / factor)
+        amount: Math.round(Number(i.amount) / getIngredientServingFactor(i.ingredientId, entryServings, recipeServings))
       }));
 
     if (ingredientsData.length === 0) {
@@ -494,6 +508,7 @@ export default function MealPlan() {
         plannedServings={viewingServings}
         mealEntryIngredients={viewingMeal?.ingredients}
         frequentAddonIds={viewingRecipe?.frequentAddons?.map((addon: any) => addon.ingredientId) || []}
+        availableIngredientIds={availableIngredientIds}
         onEditIngredients={viewingMeal ? startEditing : undefined}
         showFooter={!viewingMeal}
         onAddToPlan={(recipe) => {
