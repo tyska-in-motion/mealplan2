@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { format, addDays, subDays, startOfWeek, eachDayOfInterval } from "date-fns";
 import { pl } from "date-fns/locale";
@@ -17,6 +17,7 @@ import { RecipeView } from "@/components/RecipeView";
 import { useToast } from "@/hooks/use-toast";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +31,18 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function MealPlan() {
+  const [location] = useLocation();
   const [baseDate, setBaseDate] = useState(new Date());
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.split("?")[1] || "");
+    const dateParam = params.get("date");
+    if (!dateParam) return;
+
+    const parsedDate = new Date(`${dateParam}T00:00:00`);
+    if (Number.isNaN(parsedDate.getTime())) return;
+    setBaseDate(parsedDate);
+  }, [location]);
   
   const weekDays = useMemo(() => {
     const start = startOfWeek(baseDate, { weekStartsOn: 1 });
@@ -957,6 +969,11 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
   const { data: dayPlan, isLoading } = useDayPlan(dateStr);
   const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
 
+  const getEffectiveIngredientAmount = (ri: any, entry: any, servingFactor: number) => {
+    if (typeof ri?.calculatedAmount === "number") return ri.calculatedAmount;
+    return (Number(ri?.amount) || 0) * servingFactor;
+  };
+
   const calculateSummary = (entries: any[]) => {
     let calories = 0;
     let protein = 0;
@@ -988,7 +1005,8 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
           const recipeCount = recipeIngredientCounts.get(ingredientId) || 0;
           const isFrequentAddon = frequentAddonIds.has(ingredientId) && occurrence > recipeCount;
           const servingFactor = isFrequentAddon ? 1 : (entryServings / recipeServings);
-          const multiplier = (ri.amount / 100) * servingFactor;
+          const effectiveAmount = getEffectiveIngredientAmount(ri, entry, servingFactor);
+          const multiplier = effectiveAmount / 100;
           calories += (ri.ingredient.calories || 0) * multiplier;
           protein += (ri.ingredient.protein || 0) * multiplier;
           carbs += (ri.ingredient.carbs || 0) * multiplier;
@@ -1058,7 +1076,7 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
             const ingredientId = Number(ri.ingredientId);
             if (!ingredientId) return;
             const current = mergedByIngredient.get(ingredientId);
-            const amountToAdd = (Number(ri.amount) || 0) * scale;
+            const amountToAdd = getEffectiveIngredientAmount(ri, entry, scale);
             if (current) {
               current.amount += amountToAdd;
             } else {
@@ -1157,7 +1175,7 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
       {isLoading ? <LoadingSpinner /> : (
         <div className="space-y-5">
           {sharedEntries.length > 0 && (
-            <div className="space-y-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-3">
+            <div id="shared-meals" className="space-y-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-3">
               <div className="text-sm font-bold text-emerald-800 uppercase tracking-wider">Wspólne posiłki (Tysia + Mati)</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {sharedEntries.map((shared: any, idx: number) => (
