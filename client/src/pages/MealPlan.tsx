@@ -77,6 +77,7 @@ export default function MealPlan() {
   const personName: Record<"A" | "B", string> = { A: "Tysia", B: "Mati" };
 
   const frequentAddonDefinitions = viewingRecipe?.frequentAddons || [];
+  const getAddonBaseAmount = (addon: any) => Number(addon?.baseAmount ?? addon?.amount) || 0;
   const frequentAddonIngredientIds = useMemo(() => new Set(
     frequentAddonDefinitions.map((addon: any) => addon.ingredientId)
   ), [frequentAddonDefinitions]);
@@ -119,7 +120,7 @@ export default function MealPlan() {
 
   const addFrequentAddonToEdit = (addon: any) => {
     const addonIngredientId = Number(addon.ingredientId);
-    const addonStep = Number(addon.amount) || 0;
+    const addonStep = getAddonBaseAmount(addon);
     if (!addonIngredientId || addonStep <= 0) return;
 
     setEditingMealIngredients((prev) => {
@@ -299,7 +300,7 @@ export default function MealPlan() {
 
 
   const increaseAddonAmount = (addon: any) => {
-    const addonStep = Number(addon.amount) || 0;
+    const addonStep = getAddonBaseAmount(addon);
     if (addonStep <= 0) return;
 
     setSelectedFrequentAddons((prev) => ({
@@ -309,7 +310,7 @@ export default function MealPlan() {
   };
 
   const decreaseAddonAmount = (addon: any) => {
-    const addonStep = Number(addon.amount) || 0;
+    const addonStep = getAddonBaseAmount(addon);
     if (addonStep <= 0) return;
 
     setSelectedFrequentAddons((prev) => {
@@ -540,7 +541,7 @@ export default function MealPlan() {
                         className={cn("h-8", isAlreadyAdded && "border-emerald-300 bg-emerald-100 text-emerald-900")}
                         onClick={() => addFrequentAddonToEdit(addon)}
                       >
-                        + {Math.round(Number(addon.amount) || 0)}g {addon.ingredient?.name || "Składnik"}
+                        + {Math.round(getAddonBaseAmount(addon))}g {addon.ingredient?.name || "Składnik"}
                       </Button>
                     );
                   })}
@@ -757,7 +758,7 @@ export default function MealPlan() {
                             onClick={() => increaseAddonAmount(addon)}
                             className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100"
                           >
-                            + {Math.round(Number(addon.amount) || 0)}g {addon.ingredient?.name || "Składnik"}
+                            + {Math.round(getAddonBaseAmount(addon))}g {addon.ingredient?.name || "Składnik"}
                           </button>
 
                           <Button
@@ -776,7 +777,7 @@ export default function MealPlan() {
                     <div className="space-y-2">
                       {(selectedRecipeToAdd.frequentAddons || []).map((addon: any) => {
                         const selectedAmount = selectedFrequentAddons[addon.ingredientId] || 0;
-                        const baseAmount = Number(addon.amount) || 1;
+                        const baseAmount = getAddonBaseAmount(addon) || 1;
                         const repeatCount = Math.round(selectedAmount / baseAmount);
 
                         return (

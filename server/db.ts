@@ -49,6 +49,25 @@ export async function ensureDbCompat() {
   await pool.query(`ALTER TABLE recipe_ingredients ALTER COLUMN scaling_type SET NOT NULL`);
   await pool.query(`ALTER TABLE recipe_ingredients ALTER COLUMN scaling_type SET DEFAULT 'LINEAR'`);
 
+  // Backward-compatible self-healing for frequent addons scaling migration
+  await pool.query(`ALTER TABLE recipe_frequent_addons
+    ADD COLUMN IF NOT EXISTS base_amount real,
+    ADD COLUMN IF NOT EXISTS alternative_amount real,
+    ADD COLUMN IF NOT EXISTS alternative_unit text,
+    ADD COLUMN IF NOT EXISTS unit text,
+    ADD COLUMN IF NOT EXISTS scaling_type ingredient_scaling_type,
+    ADD COLUMN IF NOT EXISTS scaling_formula text,
+    ADD COLUMN IF NOT EXISTS step_thresholds jsonb`);
+
+  await pool.query(`UPDATE recipe_frequent_addons SET base_amount = amount WHERE base_amount IS NULL`);
+  await pool.query(`UPDATE recipe_frequent_addons SET unit = 'g' WHERE unit IS NULL`);
+  await pool.query(`UPDATE recipe_frequent_addons SET scaling_type = 'LINEAR' WHERE scaling_type IS NULL`);
+
+  await pool.query(`ALTER TABLE recipe_frequent_addons ALTER COLUMN base_amount SET NOT NULL`);
+  await pool.query(`ALTER TABLE recipe_frequent_addons ALTER COLUMN unit SET NOT NULL`);
+  await pool.query(`ALTER TABLE recipe_frequent_addons ALTER COLUMN scaling_type SET NOT NULL`);
+  await pool.query(`ALTER TABLE recipe_frequent_addons ALTER COLUMN scaling_type SET DEFAULT 'LINEAR'`);
+
   // Backward-compatible self-healing for recipe favorites migration
   await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS is_favorite boolean DEFAULT false`);
   await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS instruction_steps jsonb`);
