@@ -167,17 +167,20 @@ export function RecipeView({
     return `${formatAmount(grams)}${ri.unit || "g"}`;
   };
 
-  const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number; ingredientIds?: number[]; multiplier?: number }) => {
+  const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number; ingredientIds?: number[]; ingredientSource?: "ingredient" | "frequentAddon"; multiplier?: number }) => {
     const multiplier = typeof segment.multiplier === "number" && segment.multiplier > 0 ? segment.multiplier : 1;
     const ingredientIds = (segment.ingredientIds && segment.ingredientIds.length > 0)
       ? segment.ingredientIds
       : [segment.ingredientId];
 
     const labels = ingredientIds
-      .map((id) => baseIngredients.find((ri: any) => Number(ri.ingredientId) === Number(id)))
+      .map((id) => ingredientRows.find(({ ri, isFrequentAddon }: any) =>
+        Number(ri.ingredientId) === Number(id) &&
+        (segment.ingredientSource === "frequentAddon" ? isFrequentAddon : !isFrequentAddon)
+      )?.ri)
       .filter(Boolean)
       .map((ingredientData: any) => {
-        const amount = Math.round(getScaledAmount(ingredientData, false) * multiplier);
+        const amount = Math.round(getScaledAmount(ingredientData, segment.ingredientSource === "frequentAddon") * multiplier);
         const unit = ingredientData.unit || ingredientData.ingredient?.unit || "g";
         return `${ingredientData.ingredient?.name || segment.text}-${amount}${unit}`;
       });

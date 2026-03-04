@@ -4,6 +4,7 @@ export type InstructionLink = {
   stepIndex: number;
   text: string;
   ingredientId: number;
+  ingredientSource?: "ingredient" | "frequentAddon";
   multiplier?: number;
 };
 
@@ -50,12 +51,14 @@ export const buildInstructionSteps = (instructions: string | undefined, links: I
         );
 
         const uniqueIngredientIds = Array.from(new Set(sameLinks.map((candidate) => Number(candidate.ingredientId)).filter((id) => id > 0)));
+        const ingredientSource = link.ingredientSource === "frequentAddon" ? "frequentAddon" : "ingredient";
 
         segments.push({
           type: "ingredient",
           text: stepText.slice(position, position + link.text.length),
           ingredientId: uniqueIngredientIds[0] || Number(link.ingredientId),
           ingredientIds: uniqueIngredientIds.length > 0 ? uniqueIngredientIds : undefined,
+          ingredientSource,
           multiplier: typeof link.multiplier === "number" && Number.isFinite(link.multiplier) ? link.multiplier : 1,
         });
         cursor = position + link.text.length;

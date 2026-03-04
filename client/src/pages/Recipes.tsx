@@ -94,7 +94,7 @@ export default function Recipes() {
   const [manualAvailableIngredientIds, setManualAvailableIngredientIds] = useState<number[]>([]);
   const [excludedDefaultIngredientIds, setExcludedDefaultIngredientIds] = useState<number[]>([]);
   const [instructionLinks, setInstructionLinks] = useState<InstructionLink[]>([]);
-  const [newInstructionLink, setNewInstructionLink] = useState<InstructionLink>({ stepIndex: 0, text: "", ingredientId: 0, multiplier: 1 });
+  const [newInstructionLink, setNewInstructionLink] = useState<InstructionLink>({ stepIndex: 0, text: "", ingredientId: 0, ingredientSource: "ingredient", multiplier: 1 });
   const [newInstructionLinkMultiplierInput, setNewInstructionLinkMultiplierInput] = useState("1");
 
   const parsePositiveMultiplier = (value: string) => {
@@ -341,11 +341,12 @@ export default function Recipes() {
   const [viewingRecipe, setViewingRecipe] = useState<any>(null);
   const watchedInstructions = form.watch("instructions");
   const watchedRecipeIngredients = form.watch("ingredients");
+  const watchedFrequentAddons = form.watch("frequentAddons");
   const instructionLines = useMemo(() => parseInstructionLines(watchedInstructions), [watchedInstructions]);
   const mappableIngredients = useMemo(() => {
     const ingredientDictionary = new Map((availableIngredients || []).map((ingredient: any) => [Number(ingredient.id), ingredient]));
 
-    return (watchedRecipeIngredients || [])
+    const recipeIngredientOptions = (watchedRecipeIngredients || [])
       .map((recipeIngredient: any) => {
         const ingredientId = Number(recipeIngredient?.ingredientId);
         const ingredient = ingredientDictionary.get(ingredientId);
@@ -356,12 +357,35 @@ export default function Recipes() {
 
         return {
           id: ingredientId,
+          source: "ingredient" as const,
+          key: `ingredient-${ingredientId}`,
           label: `${ingredient.name}-${amount}${unit}`,
           name: ingredient.name,
         };
       })
-      .filter(Boolean) as { id: number; label: string; name: string }[];
-  }, [availableIngredients, watchedRecipeIngredients]);
+      .filter(Boolean);
+
+    const frequentAddonOptions = (watchedFrequentAddons || [])
+      .map((addon: any) => {
+        const ingredientId = Number(addon?.ingredientId);
+        const ingredient = ingredientDictionary.get(ingredientId);
+        if (!ingredient) return null;
+
+        const amount = Number(addon?.baseAmount ?? addon?.amount ?? 0);
+        const unit = addon?.unit || ingredient.unit || "g";
+
+        return {
+          id: ingredientId,
+          source: "frequentAddon" as const,
+          key: `frequentAddon-${ingredientId}`,
+          label: `[Dodatek] ${ingredient.name}-${amount}${unit}`,
+          name: ingredient.name,
+        };
+      })
+      .filter(Boolean);
+
+    return [...recipeIngredientOptions, ...frequentAddonOptions] as { id: number; source: "ingredient" | "frequentAddon"; key: string; label: string; name: string }[];
+  }, [availableIngredients, watchedRecipeIngredients, watchedFrequentAddons]);
 
 
 
@@ -369,7 +393,7 @@ export default function Recipes() {
     const grouped = new Map<string, InstructionLink[]>();
     instructionLinks.forEach((link) => {
       const multiplier = typeof link.multiplier === "number" ? link.multiplier : 1;
-      const key = `${link.stepIndex}__${link.text.trim().toLowerCase()}__${multiplier}`;
+      const key = `${link.stepIndex}__${link.text.trim().toLowerCase()}__${multiplier}__${link.ingredientSource || "ingredient"}`;
       const existing = grouped.get(key) || [];
       grouped.set(key, [...existing, link]);
     });
@@ -452,6 +476,7 @@ export default function Recipes() {
             stepIndex,
             text: segment.text,
             ingredientId: Number(ingredientId),
+            ingredientSource: segment.ingredientSource === "frequentAddon" ? "frequentAddon" : "ingredient",
             multiplier: typeof segment.multiplier === "number" ? segment.multiplier : 1,
           }));
         })
@@ -476,7 +501,7 @@ export default function Recipes() {
       frequentAddons: [],
     });
     setInstructionLinks([]);
-    setNewInstructionLink({ stepIndex: 0, text: "", ingredientId: 0, multiplier: 1 });
+    setNewInstructionLink({ stepIndex: 0, text: "", ingredientId: 0, ingredientSource: "ingredient", multiplier: 1 });
   };
 
   const { mutate: createRecipeMutation, isPending: isCreating } = useCreateRecipe();
@@ -993,11 +1018,25 @@ export default function Recipes() {
                       }}
                     />
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <Select value={String(newInstructionLink.ingredientId || "0")} onValueChange={(v) => setNewInstructionLink((prev) => ({ ...prev, ingredientId: Number(v) }))}>
-                        <SelectTrigger><SelectValue placeholder="Składnik" /></SelectTrigger>
+                      <Select
+                        value={newInstructionLink.ingredientId ? `${newInstructionLink.ingredientSource || "ingredient"}:${newInstructionLink.ingredientId}` : "0"}
+                        onValueChange={(v) => {
+                          if (v === "0") {
+                            setNewInstructionLink((prev) => ({ ...prev, ingredientId: 0, ingredientSource: "ingredient" }));
+                            return;
+                          }
+                          const [source, id] = v.split(":");
+                          setNewInstructionLink((prev) => ({
+                            ...prev,
+                            ingredientId: Number(id),
+                            ingredientSource: source === "frequentAddon" ? "frequentAddon" : "ingredient",
+                          }));
+                        }}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Składnik / dodatek" /></SelectTrigger>
                         <SelectContent>
                           {mappableIngredients.map((ingredient) => (
-                            <SelectItem key={ingredient.id} value={String(ingredient.id)}>{ingredient.label}</SelectItem>
+                            <SelectItem key={ingredient.key} value={`${ingredient.source}:${ingredient.id}`}>{ingredient.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -1017,7 +1056,10 @@ export default function Recipes() {
                     {groupedInstructionLinks.map((group, idx) => {
                       const first = group[0];
                       const ingredientNames = group
-                        .map((link) => (availableIngredients || []).find((ing: any) => ing.id === link.ingredientId)?.name || `#${link.ingredientId}`)
+                        .map((link) => {
+                          const ingredientName = (availableIngredients || []).find((ing: any) => ing.id === link.ingredientId)?.name || `#${link.ingredientId}`;
+                          return link.ingredientSource === "frequentAddon" ? `[Dodatek] ${ingredientName}` : ingredientName;
+                        })
                         .join(", ");
                       return (
                         <div key={`${first.stepIndex}-${first.text}-${idx}`} className="flex items-center justify-between text-xs bg-white rounded-md px-2 py-1 border">
@@ -1030,7 +1072,7 @@ export default function Recipes() {
                               setInstructionLinks((prev) =>
                                 prev.filter((link) => {
                                   const sameMultiplier = (link.multiplier ?? 1) === (first.multiplier ?? 1);
-                                  return !(link.stepIndex === first.stepIndex && link.text === first.text && sameMultiplier);
+                                  return !(link.stepIndex === first.stepIndex && link.text === first.text && sameMultiplier && (link.ingredientSource || "ingredient") === (first.ingredientSource || "ingredient"));
                                 })
                               )
                             }
