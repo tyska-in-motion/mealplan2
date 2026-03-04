@@ -110,6 +110,26 @@ export default function MealPlan() {
     return entryServings / recipeServings;
   };
 
+  const resolveRecipeIngredientSource = (ingredientId: number, occurrence: number) => {
+    if (!viewingRecipe) return undefined;
+    const recipeIngredients = (viewingRecipe.ingredients || []).filter((ri: any) => Number(ri?.ingredientId) === Number(ingredientId));
+    const recipeFrequentAddons = (viewingRecipe.frequentAddons || []).filter((ri: any) => Number(ri?.ingredientId) === Number(ingredientId));
+    const candidates = [...recipeIngredients, ...recipeFrequentAddons];
+    return candidates[occurrence - 1] || candidates[0];
+  };
+
+  const convertDisplayedAmountToStoredAmount = (ingredient: any, entryServings: number, recipeServings: number) => {
+    const displayAmount = Number(ingredient?.amount) || 0;
+    const scalingType = ingredient?.scalingType || "LINEAR";
+
+    if (scalingType === "LINEAR") {
+      const factor = getIngredientServingFactor(Number(ingredient?.ingredientId), entryServings, recipeServings);
+      return Math.round(displayAmount / (factor || 1));
+    }
+
+    return Math.round(displayAmount);
+  };
+
   const startEditing = () => {
     if (!viewingRecipe || !viewingMeal) return;
 
@@ -134,11 +154,24 @@ export default function MealPlan() {
       const recipeCount = recipeIngredientCounts.get(ingredientId) || 0;
       const isFrequentAddon = frequentAddonIngredientIds.has(ingredientId) && occurrence > recipeCount;
 
+      const source = resolveRecipeIngredientSource(ingredientId, occurrence);
+      const ingredientForScaling = {
+        ...source,
+        ...ri,
+        baseAmount: Number(ri?.baseAmount ?? ri?.amount ?? source?.baseAmount ?? source?.amount ?? 0) || 0,
+        scalingType: ri?.scalingType ?? source?.scalingType ?? "LINEAR",
+        scalingFormula: ri?.scalingFormula ?? source?.scalingFormula,
+        stepThresholds: ri?.stepThresholds ?? source?.stepThresholds,
+      };
+
       return {
         ingredientId: ri.ingredientId,
-        amount: Math.round(ri.amount * (isFrequentAddon ? 1 : (entryServings / recipeServings))),
+        amount: Math.round(calculateScaledAmount(ingredientForScaling as any, entryServings, recipeServings)),
         ingredient: ri.ingredient,
         isFrequentAddon,
+        scalingType: ingredientForScaling.scalingType,
+        scalingFormula: ingredientForScaling.scalingFormula,
+        stepThresholds: ingredientForScaling.stepThresholds,
       };
     });
 
@@ -200,7 +233,7 @@ export default function MealPlan() {
       .filter(i => i.ingredientId > 0)
       .map(i => ({ 
         ingredientId: Number(i.ingredientId), 
-        amount: Math.round(Number(i.amount) / getIngredientServingFactor(i.ingredientId, entryServings, recipeServings))
+        amount: convertDisplayedAmountToStoredAmount(i, entryServings, recipeServings),
       }));
 
     if (ingredientsData.length === 0) {
