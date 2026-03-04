@@ -61,6 +61,32 @@ export default function Dashboard() {
     queryKey: ["/api/shopping-list/exclusions"],
   });
 
+  const frequentAddonIngredientIds = useMemo(() => new Set(
+    (viewingRecipe?.frequentAddons || []).map((addon: any) => Number(addon.ingredientId))
+  ), [viewingRecipe?.frequentAddons]);
+
+  const availableIngredientIds = useMemo(() => {
+    const alwaysAtHomeIds = (allAvailableIngredients || [])
+      .filter((ingredient: any) => ingredient.alwaysAtHome)
+      .map((ingredient: any) => Number(ingredient.id));
+
+    const manualIds = (shoppingListExcludedIds || []).map((id) => Number(id));
+    return Array.from(new Set([...alwaysAtHomeIds, ...manualIds]));
+  }, [allAvailableIngredients, shoppingListExcludedIds]);
+
+  const getIngredientServingFactor = (ingredientId: number, entryServings: number, recipeServings: number) => {
+    if (frequentAddonIngredientIds.has(Number(ingredientId))) return 1;
+    return entryServings / recipeServings;
+  };
+
+  const getEntryIngredientServingFactor = (entry: any, ingredientId: number) => {
+    const entryServings = Number(entry?.servings) || 1;
+    const recipeServings = Number(entry?.recipe?.servings) || 1;
+    const frequentAddonIds = new Set<number>(((entry?.recipe?.frequentAddons) || []).map((addon: any) => Number(addon.ingredientId)));
+    if (frequentAddonIds.has(Number(ingredientId))) return 1;
+    return entryServings / recipeServings;
+  };
+
 
   const startEditing = () => {
     const currentIngredients = (viewingMeal?.ingredients && viewingMeal.ingredients.length > 0)
@@ -69,11 +95,9 @@ export default function Dashboard() {
     
     const entryServings = viewingMeal ? (Number(viewingMeal.servings) || 1) : 1;
     const recipeServings = Number(viewingRecipe.servings) || 1;
-    const factor = entryServings / recipeServings;
-
     setEditingMealIngredients(currentIngredients.map((ri: any) => ({
       ingredientId: ri.ingredientId,
-      amount: Math.round(ri.amount * factor), // Scale to current servings
+      amount: Math.round(ri.amount * getIngredientServingFactor(ri.ingredientId, entryServings, recipeServings)),
       ingredient: ri.ingredient
     })));
     setIsEditingIngredients(true);
@@ -101,13 +125,11 @@ export default function Dashboard() {
     
     const entryServings = Number(viewingMeal.servings) || 1;
     const recipeServings = Number(viewingRecipe.servings) || 1;
-    const factor = entryServings / recipeServings;
-
     const ingredientsData = editingMealIngredients
       .filter(i => i.ingredientId > 0)
       .map(i => ({ 
         ingredientId: Number(i.ingredientId), 
-        amount: Math.round(Number(i.amount) / factor)
+        amount: Math.round(Number(i.amount) / getIngredientServingFactor(i.ingredientId, entryServings, recipeServings))
       }));
 
     if (ingredientsData.length === 0) {
@@ -203,25 +225,22 @@ export default function Dashboard() {
 
       const recipe = entry.recipe;
       const entryIngredients = entry.ingredients.length > 0 ? entry.ingredients : (recipe?.ingredients || []);
-      const entryServings = Number(entry.servings) || 1;
-      const recipeServings = Number(recipe?.servings || 1);
-      const factor = entryServings / recipeServings;
-
       const stats = entryIngredients.reduce((sum: any, ri: any) => {
         if (!ri.ingredient) return sum;
+        const factor = getEntryIngredientServingFactor(entry, ri.ingredientId);
         return {
-          calories: sum.calories + (ri.ingredient.calories * ri.amount / 100),
-          protein: sum.protein + (ri.ingredient.protein * ri.amount / 100),
-          carbs: sum.carbs + (ri.ingredient.carbs * ri.amount / 100),
-          fat: sum.fat + (ri.ingredient.fat * ri.amount / 100),
+          calories: sum.calories + (ri.ingredient.calories * ri.amount / 100) * factor,
+          protein: sum.protein + (ri.ingredient.protein * ri.amount / 100) * factor,
+          carbs: sum.carbs + (ri.ingredient.carbs * ri.amount / 100) * factor,
+          fat: sum.fat + (ri.ingredient.fat * ri.amount / 100) * factor,
         };
       }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
       return {
-        calories: acc.calories + stats.calories * factor,
-        protein: acc.protein + stats.protein * factor,
-        carbs: acc.carbs + stats.carbs * factor,
-        fat: acc.fat + stats.fat * factor,
+        calories: acc.calories + stats.calories,
+        protein: acc.protein + stats.protein,
+        carbs: acc.carbs + stats.carbs,
+        fat: acc.fat + stats.fat,
       };
     }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
   };
@@ -265,13 +284,10 @@ export default function Dashboard() {
   const totalDayCost = (dayPlan?.entries || []).reduce((acc: number, entry: any) => {
     const recipe = entry.recipe;
     const entryIngredients = entry.ingredients.length > 0 ? entry.ingredients : (recipe?.ingredients || []);
-    const entryServings = Number(entry.servings) || 1;
-    const recipeServings = Number(recipe?.servings || 1);
-    const factor = entryServings / recipeServings;
-
-    return acc + entryIngredients.reduce((sum: number, ri: any) =>
-      sum + ((ri.ingredient?.price || 0) * ri.amount / 100) * factor, 0
-    );
+    return acc + entryIngredients.reduce((sum: number, ri: any) => {
+      const factor = getEntryIngredientServingFactor(entry, ri.ingredientId);
+      return sum + ((ri.ingredient?.price || 0) * ri.amount / 100) * factor;
+    }, 0);
   }, 0) || 0;
 
   const resetQuickAdd = () => {
@@ -625,6 +641,8 @@ export default function Dashboard() {
         }}
         plannedServings={viewingPlannedServings ?? (viewingMeal ? Number(viewingMeal.servings) : undefined)}
         mealEntryIngredients={viewingMeal?.ingredients}
+        frequentAddonIds={viewingRecipe?.frequentAddons?.map((addon: any) => addon.ingredientId) || []}
+        availableIngredientIds={availableIngredientIds}
         onEditIngredients={startEditing}
         showFooter={false}
         onAddToPlan={() => {}} 
@@ -769,26 +787,24 @@ export default function Dashboard() {
                               <p className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Flame className="w-3 h-3" />
                                 {meal.recipe ? (() => {
-                                  const entryServings = Number(meal.servings) || 1;
-                                  const recipeServings = Number(meal.recipe?.servings) || 1;
-                                  const factor = entryServings / recipeServings;
-                                  const total = (meal.ingredients && meal.ingredients.length > 0 ? meal.ingredients : (meal.recipe?.ingredients || [])).reduce((sum: number, ri: any) =>
-                                    sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
-                                  );
-                                  return Math.round(total * factor);
+                                  const total = (meal.ingredients && meal.ingredients.length > 0 ? meal.ingredients : (meal.recipe?.ingredients || [])).reduce((sum: number, ri: any) => {
+                                    if (!ri.ingredient) return sum;
+                                    const factor = getEntryIngredientServingFactor(meal, ri.ingredientId);
+                                    return sum + (ri.ingredient.calories * ri.amount / 100) * factor;
+                                  }, 0);
+                                  return Math.round(total);
                                 })() : ((meal.customCalories || 0) * (Number(meal.servings) || 1))} kcal
                               </p>
                               {meal.recipe && (
                                 <p className="text-xs text-primary/70 font-semibold flex items-center gap-1">
                                   <Wallet className="w-3 h-3" />
                                   {(() => {
-                                    const entryServings = Number(meal.servings) || 1;
-                                    const recipeServings = Number(meal.recipe?.servings) || 1;
-                                    const factor = entryServings / recipeServings;
-                                    const total = (meal.ingredients && meal.ingredients.length > 0 ? meal.ingredients : (meal.recipe?.ingredients || [])).reduce((sum: number, ri: any) =>
-                                      sum + (ri.ingredient ? (ri.ingredient.price * ri.amount / 100) : 0), 0
-                                    );
-                                    return Math.round(total * factor);
+                                    const total = (meal.ingredients && meal.ingredients.length > 0 ? meal.ingredients : (meal.recipe?.ingredients || [])).reduce((sum: number, ri: any) => {
+                                      if (!ri.ingredient) return sum;
+                                      const factor = getEntryIngredientServingFactor(meal, ri.ingredientId);
+                                      return sum + (ri.ingredient.price * ri.amount / 100) * factor;
+                                    }, 0);
+                                    return Math.round(total);
                                   })()} PLN
                                 </p>
                               )}
