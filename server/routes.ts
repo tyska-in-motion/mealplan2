@@ -48,14 +48,26 @@ function resolveIngredientForScaling(entry: any, ingredientRow: any) {
   const recipeIngredient = (entry?.recipe?.ingredients || []).find(
     (ri: any) => Number(ri.ingredientId) === Number(ingredientRow.ingredientId),
   );
+  const recipeFrequentAddon = (entry?.recipe?.frequentAddons || []).find(
+    (addon: any) => Number(addon.ingredientId) === Number(ingredientRow.ingredientId),
+  );
 
   return {
+    ...recipeFrequentAddon,
     ...recipeIngredient,
     ...ingredientRow,
-    baseAmount: Number(ingredientRow?.baseAmount ?? ingredientRow?.amount ?? recipeIngredient?.baseAmount ?? recipeIngredient?.amount ?? 0),
-    scalingType: ingredientRow?.scalingType ?? recipeIngredient?.scalingType ?? "LINEAR",
-    scalingFormula: ingredientRow?.scalingFormula ?? recipeIngredient?.scalingFormula,
-    stepThresholds: ingredientRow?.stepThresholds ?? recipeIngredient?.stepThresholds,
+    baseAmount: Number(
+      ingredientRow?.baseAmount
+      ?? ingredientRow?.amount
+      ?? recipeIngredient?.baseAmount
+      ?? recipeIngredient?.amount
+      ?? recipeFrequentAddon?.baseAmount
+      ?? recipeFrequentAddon?.amount
+      ?? 0,
+    ),
+    scalingType: ingredientRow?.scalingType ?? recipeIngredient?.scalingType ?? recipeFrequentAddon?.scalingType ?? "LINEAR",
+    scalingFormula: ingredientRow?.scalingFormula ?? recipeIngredient?.scalingFormula ?? recipeFrequentAddon?.scalingFormula,
+    stepThresholds: ingredientRow?.stepThresholds ?? recipeIngredient?.stepThresholds ?? recipeFrequentAddon?.stepThresholds,
   };
 }
 
