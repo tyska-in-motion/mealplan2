@@ -89,7 +89,8 @@ export default function MealPlan() {
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<"A" | "B">("A");
   const [selectedRecipeToAdd, setSelectedRecipeToAdd] = useState<any>(null);
-  const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<number, number>>({});
+  const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<number, number>>>({ A: {}, B: {} });
+  const [addRecipeForBothPeople, setAddRecipeForBothPeople] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   
@@ -300,7 +301,8 @@ export default function MealPlan() {
     setSelectedTag(null);
     setSelectedPerson(person);
     setSelectedRecipeToAdd(null);
-    setSelectedFrequentAddons({});
+    setSelectedFrequentAddons({ A: {}, B: {} });
+    setAddRecipeForBothPeople(false);
     setIsAddOpen(true);
   };
 
@@ -326,29 +328,34 @@ export default function MealPlan() {
     setSelectedMealType(null);
     setSelectedDateStr(null);
     setSelectedRecipeToAdd(null);
-    setSelectedFrequentAddons({});
+    setSelectedFrequentAddons({ A: {}, B: {} });
+    setAddRecipeForBothPeople(false);
+  };
+
+  const getSelectedAddonsForPerson = (recipe: any, person: "A" | "B") => {
+    return (recipe?.frequentAddons || [])
+      .map((addon: any) => ({
+        ...addon,
+        amount: Number(selectedFrequentAddons?.[person]?.[addon.ingredientId] || 0),
+      }))
+      .filter((addon: any) => addon.amount > 0);
   };
 
   const handleAdd = (recipeId: number, recipe?: any) => {
     if (!selectedMealType || !selectedDateStr) return;
 
-    const selectedAddons = (recipe?.frequentAddons || [])
-      .map((addon: any) => ({
-        ...addon,
-        amount: Number(selectedFrequentAddons[addon.ingredientId] || 0),
-      }))
-      .filter((addon: any) => addon.amount > 0);
-    
-    addEntry({
+    const createEntryWithAddons = (person: "A" | "B", onSuccess?: () => void) => addEntry({
       date: selectedDateStr,
       recipeId,
       mealType: selectedMealType,
-      person: selectedPerson,
+      person,
       isEaten: false,
     }, {
       onSuccess: (entry) => {
+        const selectedAddons = getSelectedAddonsForPerson(recipe, person);
+
         if (!recipe || selectedAddons.length === 0) {
-          closeAddDialog();
+          onSuccess?.();
           return;
         }
 
@@ -371,54 +378,81 @@ export default function MealPlan() {
             servings: 1,
           },
         }, {
-          onSuccess: closeAddDialog,
+          onSuccess,
         });
       }
     });
+
+    if (addRecipeForBothPeople) {
+      const otherPerson: "A" | "B" = selectedPerson === "A" ? "B" : "A";
+      createEntryWithAddons(selectedPerson, () => {
+        createEntryWithAddons(otherPerson, closeAddDialog);
+      });
+      return;
+    }
+
+    createEntryWithAddons(selectedPerson, closeAddDialog);
   };
 
 
 
-  const increaseAddonAmount = (addon: any) => {
+  const increaseAddonAmount = (addon: any, person: "A" | "B") => {
     const addonStep = getAddonBaseAmount(addon);
     if (addonStep <= 0) return;
 
     setSelectedFrequentAddons((prev) => ({
       ...prev,
-      [addon.ingredientId]: (prev[addon.ingredientId] || 0) + addonStep,
+      [person]: {
+        ...(prev?.[person] || {}),
+        [addon.ingredientId]: ((prev?.[person] || {})[addon.ingredientId] || 0) + addonStep,
+      },
     }));
   };
 
-  const decreaseAddonAmount = (addon: any) => {
+  const decreaseAddonAmount = (addon: any, person: "A" | "B") => {
     const addonStep = getAddonBaseAmount(addon);
     if (addonStep <= 0) return;
 
     setSelectedFrequentAddons((prev) => {
-      const current = prev[addon.ingredientId] || 0;
+      const personAddons = prev?.[person] || {};
+      const current = personAddons[addon.ingredientId] || 0;
       const nextAmount = Math.max(0, current - addonStep);
       if (nextAmount === 0) {
-        const { [addon.ingredientId]: _removed, ...rest } = prev;
-        return rest;
+        const { [addon.ingredientId]: _removed, ...rest } = personAddons;
+        return {
+          ...prev,
+          [person]: rest,
+        };
       }
 
       return {
         ...prev,
-        [addon.ingredientId]: nextAmount,
+        [person]: {
+          ...personAddons,
+          [addon.ingredientId]: nextAmount,
+        },
       };
     });
   };
 
-  const setAddonAmount = (ingredientId: number, amount: number) => {
+  const setAddonAmount = (ingredientId: number, amount: number, person: "A" | "B") => {
     setSelectedFrequentAddons((prev) => {
+      const personAddons = prev?.[person] || {};
       const nextAmount = Math.max(0, Math.round(amount));
       if (nextAmount === 0) {
-        const { [ingredientId]: _removed, ...rest } = prev;
-        return rest;
+        const { [ingredientId]: _removed, ...rest } = personAddons;
+        return {
+          ...prev,
+          [person]: rest,
+        };
       }
 
       return {
         ...prev,
-        [ingredientId]: nextAmount,
+        [person]: {
+          ...personAddons,
+          [ingredientId]: nextAmount,
+        },
       };
     });
   };
@@ -790,7 +824,8 @@ export default function MealPlan() {
                     key={recipe.id}
                     onClick={() => {
                       setSelectedRecipeToAdd(recipe);
-                      setSelectedFrequentAddons({});
+                      setSelectedFrequentAddons({ A: {}, B: {} });
+                      setAddRecipeForBothPeople(false);
                     }}
                     className="flex items-center gap-2 sm:gap-4 p-2.5 sm:p-3 rounded-xl hover:bg-secondary transition-colors text-left border border-transparent hover:border-border"
                   >
@@ -834,14 +869,14 @@ export default function MealPlan() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 rounded-full"
-                            onClick={() => decreaseAddonAmount(addon)}
+                            onClick={() => decreaseAddonAmount(addon, selectedPerson)}
                           >
                             <Minus className="h-3.5 w-3.5" />
                           </Button>
 
                           <button
                             type="button"
-                            onClick={() => increaseAddonAmount(addon)}
+                            onClick={() => increaseAddonAmount(addon, selectedPerson)}
                             className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100"
                           >
                             + {Math.round(getAddonBaseAmount(addon))}g {addon.ingredient?.name || "Składnik"}
@@ -852,7 +887,7 @@ export default function MealPlan() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 rounded-full"
-                            onClick={() => increaseAddonAmount(addon)}
+                            onClick={() => increaseAddonAmount(addon, selectedPerson)}
                           >
                             <Plus className="h-3.5 w-3.5" />
                           </Button>
@@ -862,59 +897,80 @@ export default function MealPlan() {
 
                     <div className="space-y-2">
                       {(selectedRecipeToAdd.frequentAddons || []).map((addon: any) => {
-                        const selectedAmount = selectedFrequentAddons[addon.ingredientId] || 0;
+                        const selectedAmountA = selectedFrequentAddons.A[addon.ingredientId] || 0;
+                        const selectedAmountB = selectedFrequentAddons.B[addon.ingredientId] || 0;
                         const baseAmount = getAddonBaseAmount(addon) || 1;
-                        const repeatCount = Math.round(selectedAmount / baseAmount);
+                        const repeatCountA = Math.round(selectedAmountA / baseAmount);
+                        const repeatCountB = Math.round(selectedAmountB / baseAmount);
 
                         return (
                           <div
                             key={`selected-${addon.ingredientId}`}
                             className={cn(
-                              "flex flex-wrap items-center gap-2 rounded-lg border bg-white p-2 transition-colors",
-                              selectedAmount > 0 ? "border-emerald-200" : "border-border"
+                              "space-y-2 rounded-lg border bg-white p-2 transition-colors",
+                              selectedAmountA > 0 || selectedAmountB > 0 ? "border-emerald-200" : "border-border"
                             )}
                           >
                             <span className="text-sm font-medium sm:min-w-[140px]">
                               {addon.ingredient?.name || "Składnik"}
                             </span>
 
-                            <Button type="button" variant="outline" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => decreaseAddonAmount(addon)}>
-                              <Minus className="h-4 w-4" />
-                            </Button>
+                            {(["A", "B"] as const).map((person) => {
+                              const selectedAmount = person === "A" ? selectedAmountA : selectedAmountB;
+                              const repeatCount = person === "A" ? repeatCountA : repeatCountB;
+                              return (
+                                <div key={`${addon.ingredientId}-${person}`} className="flex flex-wrap items-center gap-2">
+                                  <span className="w-12 text-xs font-semibold text-muted-foreground">{personName[person]}</span>
 
-                            <Input
-                              type="number"
-                              min={0}
-                              value={selectedAmount}
-                              onChange={(e) => setAddonAmount(addon.ingredientId, Number(e.target.value) || 0)}
-                              className="h-7 sm:h-8 w-20 sm:w-24 text-xs sm:text-sm"
-                            />
+                                  <Button type="button" variant="outline" size="icon" className="h-7 w-7 sm:h-8 sm:w-8" onClick={() => decreaseAddonAmount(addon, person)}>
+                                    <Minus className="h-4 w-4" />
+                                  </Button>
 
-                            <span className="text-[11px] text-muted-foreground">g</span>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={selectedAmount}
+                                    onChange={(e) => setAddonAmount(addon.ingredientId, Number(e.target.value) || 0, person)}
+                                    className="h-7 sm:h-8 w-20 sm:w-24 text-xs sm:text-sm"
+                                  />
 
-                            <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => increaseAddonAmount(addon)}>
-                              <Plus className="h-4 w-4" />
-                            </Button>
+                                  <span className="text-[11px] text-muted-foreground">g</span>
 
-                            <span className="text-[11px] text-muted-foreground">x{Math.max(0, repeatCount)}</span>
+                                  <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => increaseAddonAmount(addon, person)}>
+                                    <Plus className="h-4 w-4" />
+                                  </Button>
 
-                            {selectedAmount > 0 && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="ml-auto h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground"
-                                onClick={() => setAddonAmount(addon.ingredientId, 0)}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            )}
+                                  <span className="text-[11px] text-muted-foreground">x{Math.max(0, repeatCount)}</span>
+
+                                  {selectedAmount > 0 && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground"
+                                      onClick={() => setAddonAmount(addon.ingredientId, 0, person)}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       })}
                     </div>
                   </div>
                 )}
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={addRecipeForBothPeople}
+                    onChange={(e) => setAddRecipeForBothPeople(e.target.checked)}
+                  />
+                  Dodaj ten przepis od razu dla obu osób
+                </label>
 
                 <DialogFooter>
                   <Button variant="ghost" onClick={closeAddDialog}>Anuluj</Button>
