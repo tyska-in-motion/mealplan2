@@ -219,6 +219,22 @@ export default function Recipes() {
   const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<number, number>>>({ A: {}, B: {} });
   const personName: Record<"A" | "B", string> = { A: "Tysia", B: "Mati" };
 
+  const setAddonAmount = (person: "A" | "B", ingredientId: number, amount: number) => {
+    const safeAmount = Math.max(0, Math.round(amount));
+    setSelectedFrequentAddons((prev) => ({
+      ...prev,
+      [person]: {
+        ...prev[person],
+        [ingredientId]: safeAmount,
+      },
+    }));
+  };
+
+  const adjustAddonAmount = (person: "A" | "B", ingredientId: number, delta: number) => {
+    const current = Number(selectedFrequentAddons?.[person]?.[ingredientId] || 0);
+    setAddonAmount(person, ingredientId, current + delta);
+  };
+
   const { data: dayPlan } = useDayPlan(selectedDate);
   const { mutate: addEntry, isPending: isAddingToPlan } = useAddMealEntry();
 
@@ -1439,22 +1455,33 @@ export default function Recipes() {
                       {(["A", "B"] as const).map((person) => (
                         <div key={`${addon.ingredientId}-${person}`} className="flex items-center gap-2">
                           <span className="w-12 text-xs text-muted-foreground font-semibold">{personName[person]}</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => adjustAddonAmount(person, addon.ingredientId, -(Number(addon.baseAmount ?? addon.amount) || 0))}
+                          >
+                            -
+                          </Button>
                           <Input
                             type="number"
                             min={0}
                             value={selectedFrequentAddons[person][addon.ingredientId] || 0}
                             onChange={(e) => {
-                              const amount = Math.max(0, Math.round(Number(e.target.value) || 0));
-                              setSelectedFrequentAddons((prev) => ({
-                                ...prev,
-                                [person]: {
-                                  ...prev[person],
-                                  [addon.ingredientId]: amount,
-                                },
-                              }));
+                              setAddonAmount(person, addon.ingredientId, Number(e.target.value) || 0);
                             }}
                             className="h-8 w-24"
                           />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => adjustAddonAmount(person, addon.ingredientId, Number(addon.baseAmount ?? addon.amount) || 0)}
+                          >
+                            +
+                          </Button>
                           <span className="text-xs text-muted-foreground">{addon.unit || "g"}</span>
                         </div>
                       ))}

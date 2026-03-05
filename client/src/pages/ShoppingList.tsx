@@ -307,7 +307,7 @@ export default function ShoppingList() {
                             </span>
                             {Number(item.unitWeight || 0) > 0 && (
                               <span className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                                ok. {(item.totalAmount / Number(item.unitWeight)).toFixed(1)} szt.
+                                ok. {formatAmount(item.totalAmount / Number(item.unitWeight))} szt.
                               </span>
                             )}
                             <div className="flex gap-2">
