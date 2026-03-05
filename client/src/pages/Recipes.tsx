@@ -214,7 +214,10 @@ export default function Recipes() {
   const [recipeToPlan, setRecipeToPlan] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [selectedMealType, setSelectedMealType] = useState("lunch");
-  const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<number[]>([]);
+  const [selectedPerson, setSelectedPerson] = useState<"A" | "B">("A");
+  const [addForBothPeople, setAddForBothPeople] = useState(true);
+  const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<number, number>>>({ A: {}, B: {} });
+  const personName: Record<"A" | "B", string> = { A: "Tysia", B: "Mati" };
 
   const { data: dayPlan } = useDayPlan(selectedDate);
   const { mutate: addEntry, isPending: isAddingToPlan } = useAddMealEntry();
@@ -224,18 +227,23 @@ export default function Recipes() {
 
     const isOccupiedA = dayPlan?.entries.some((e: any) => e.mealType === selectedMealType && (e.person || "A") === "A");
     const isOccupiedB = dayPlan?.entries.some((e: any) => e.mealType === selectedMealType && (e.person || "A") === "B");
-    if (isOccupiedA || isOccupiedB) {
+    const targetPeople = addForBothPeople ? (["A", "B"] as const) : ([selectedPerson] as const);
+    const hasCollision = targetPeople.some((person) => person === "A" ? isOccupiedA : isOccupiedB);
+    if (hasCollision) {
       toast({
         variant: "destructive",
         title: "Błąd",
-        description: "Ten posiłek jest już zajęty dla jednej z osób w wybranym dniu.",
+        description: "Ten posiłek jest już zajęty dla wybranej osoby w wybranym dniu.",
       });
       return;
     }
 
-    const selectedAddons = (recipeToPlan?.frequentAddons || []).filter((addon: any) =>
-      selectedFrequentAddons.includes(addon.ingredientId)
-    );
+    const getSelectedAddonsForPerson = (person: "A" | "B") => (recipeToPlan?.frequentAddons || [])
+      .map((addon: any) => ({
+        ...addon,
+        amount: Number(selectedFrequentAddons?.[person]?.[addon.ingredientId] || 0),
+      }))
+      .filter((addon: any) => addon.amount > 0);
 
     const addForPerson = (person: "A" | "B") =>
       new Promise<void>((resolve, reject) => {
@@ -249,6 +257,7 @@ export default function Recipes() {
         }, {
           onSuccess: async (createdEntry: any) => {
             try {
+              const selectedAddons = getSelectedAddonsForPerson(person);
               if (selectedAddons.length > 0) {
                 const baseIngredients = (recipeToPlan.ingredients || []).map((ri: any) => ({
                   ingredientId: ri.ingredientId,
@@ -259,11 +268,11 @@ export default function Recipes() {
                 selectedAddons.forEach((addon: any) => {
                   const existing = mergedIngredients.find((i) => i.ingredientId === addon.ingredientId);
                   if (existing) {
-                    existing.amount += Number(addon.baseAmount ?? addon.amount) || 0;
+                    existing.amount += Number(addon.amount) || 0;
                   } else {
                     mergedIngredients.push({
                       ingredientId: addon.ingredientId,
-                      amount: Number(addon.baseAmount ?? addon.amount) || 0,
+                      amount: Number(addon.amount) || 0,
                     });
                   }
                 });
@@ -286,12 +295,13 @@ export default function Recipes() {
         });
       });
 
-    Promise.all([addForPerson("A"), addForPerson("B")])
+    Promise.all(targetPeople.map((person) => addForPerson(person)))
       .then(() => {
         setIsAddToPlanOpen(false);
         setRecipeToPlan(null);
-        setSelectedFrequentAddons([]);
-        toast({ title: "Sukces", description: "Przepis dodany do planu dla Tysi i Matiego." });
+        setSelectedFrequentAddons({ A: {}, B: {} });
+        setAddForBothPeople(true);
+        toast({ title: "Sukces", description: addForBothPeople ? "Przepis dodany do planu dla Tysi i Matiego." : `Przepis dodany do planu dla ${personName[selectedPerson]}.` });
       })
       .catch((err: any) => {
         toast({ variant: "destructive", title: "Błąd", description: err?.message || "Nie udało się dodać przepisu." });
@@ -1198,7 +1208,9 @@ export default function Recipes() {
                  onClick={(e) => { 
                     e.preventDefault(); 
                     setRecipeToPlan(recipe);
-                    setSelectedFrequentAddons([]);
+                    setSelectedFrequentAddons({ A: {}, B: {} });
+                    setAddForBothPeople(true);
+                    setSelectedPerson("A");
                     setIsAddToPlanOpen(true);
                   }}
                   className="bg-white/80 p-2 rounded-full text-primary hover:bg-white transition-colors"
@@ -1343,6 +1355,9 @@ export default function Recipes() {
         onAddToPlan={(recipe) => {
           setRecipeToPlan(recipe);
           setViewingRecipe(null);
+          setSelectedFrequentAddons({ A: {}, B: {} });
+          setAddForBothPeople(true);
+          setSelectedPerson("A");
           setIsAddToPlanOpen(true);
         }}
         availableIngredientIds={effectiveAvailableIngredientIds}
@@ -1353,7 +1368,9 @@ export default function Recipes() {
         onOpenChange={(open) => {
           setIsAddToPlanOpen(open);
           if (!open) {
-            setSelectedFrequentAddons([]);
+            setSelectedFrequentAddons({ A: {}, B: {} });
+            setAddForBothPeople(true);
+            setSelectedPerson("A");
           }
         }}
       >
@@ -1391,26 +1408,57 @@ export default function Recipes() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Dla kogo</label>
+              <Select value={selectedPerson} onValueChange={(value) => setSelectedPerson(value as "A" | "B")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="A">Tysia</SelectItem>
+                  <SelectItem value="B">Mati</SelectItem>
+                </SelectContent>
+              </Select>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={addForBothPeople}
+                  onChange={(e) => setAddForBothPeople(e.target.checked)}
+                />
+                Dodaj od razu dla obu osób
+              </label>
+            </div>
             {(recipeToPlan?.frequentAddons || []).length > 0 && (
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Sugerowane dodatki</label>
                 <div className="space-y-2 rounded-xl border border-border/60 bg-secondary/20 p-3">
                   {(recipeToPlan.frequentAddons || []).map((addon: any) => (
-                    <label key={addon.ingredientId} className="flex items-center justify-between gap-3 text-sm">
-                      <span>{addon.ingredient?.name || "Składnik"}</span>
-                      <span className="text-muted-foreground mr-auto">+{formatLocalizedNumber(Number(addon.baseAmount ?? addon.amount) || 0)} {addon.unit || "g"}</span>
-                      <input
-                        type="checkbox"
-                        checked={selectedFrequentAddons.includes(addon.ingredientId)}
-                        onChange={(e) => {
-                          setSelectedFrequentAddons((prev) =>
-                            e.target.checked
-                              ? [...prev, addon.ingredientId]
-                              : prev.filter((id) => id !== addon.ingredientId)
-                          );
-                        }}
-                      />
-                    </label>
+                    <div key={addon.ingredientId} className="space-y-1 rounded-lg border bg-white p-2 text-sm">
+                      <div className="font-medium">{addon.ingredient?.name || "Składnik"}</div>
+                      <div className="text-xs text-muted-foreground">Krok: +{formatLocalizedNumber(Number(addon.baseAmount ?? addon.amount) || 0)} {addon.unit || "g"}</div>
+                      {(["A", "B"] as const).map((person) => (
+                        <div key={`${addon.ingredientId}-${person}`} className="flex items-center gap-2">
+                          <span className="w-12 text-xs text-muted-foreground font-semibold">{personName[person]}</span>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={selectedFrequentAddons[person][addon.ingredientId] || 0}
+                            onChange={(e) => {
+                              const amount = Math.max(0, Math.round(Number(e.target.value) || 0));
+                              setSelectedFrequentAddons((prev) => ({
+                                ...prev,
+                                [person]: {
+                                  ...prev[person],
+                                  [addon.ingredientId]: amount,
+                                },
+                              }));
+                            }}
+                            className="h-8 w-24"
+                          />
+                          <span className="text-xs text-muted-foreground">{addon.unit || "g"}</span>
+                        </div>
+                      ))}
+                    </div>
                   ))}
                 </div>
               </div>
