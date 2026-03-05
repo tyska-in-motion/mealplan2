@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { useIngredients, useCreateIngredient, useDeleteIngredient, useUpdateIngredient } from "@/hooks/use-ingredients";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -41,16 +41,8 @@ const createIngredientSchema = z.object({
 
 export default function Ingredients() {
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const { data: ingredients, isLoading } = useIngredients(debouncedSearch);
+  const { data: ingredients, isLoading } = useIngredients();
   const { mutate: createIngredient } = useCreateIngredient();
   const { mutate: updateIngredientMutation } = useUpdateIngredient();
   const { mutate: deleteIngredientMutation } = useDeleteIngredient();
@@ -64,6 +56,11 @@ export default function Ingredients() {
   const categories = Array.from(new Set(ingredients?.map(i => i.category).filter(Boolean) || [])) as string[];
 
   const filteredIngredients = ingredients?.filter(item => {
+    const normalizedSearch = search.trim().toLowerCase();
+    const matchesSearch = !normalizedSearch
+      || item.name.toLowerCase().includes(normalizedSearch)
+      || (item.category || "").toLowerCase().includes(normalizedSearch);
+
     const categoryMatches = selectedCategory === "all" || item.category === selectedCategory;
 
     const price = Number(item.price) || 0;
@@ -77,7 +74,7 @@ export default function Ingredients() {
       (completenessFilter === "missingUnitWeight" && missingUnitWeight) ||
       (completenessFilter === "missingAny" && (missingPrice || missingUnitWeight));
 
-    return categoryMatches && completenessMatches;
+    return matchesSearch && categoryMatches && completenessMatches;
   }).sort((a, b) => {
     switch (sortBy) {
       case "alphabetical":
