@@ -1136,6 +1136,46 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
       return addonTotals;
     };
 
+    const collectFixedRecipeIngredientAmounts = (entry: any) => {
+      const totals = new Map<number, { amount: number; ingredient: any }>();
+      const ingredientsToUse = entry?.ingredients?.length > 0 ? entry.ingredients : [];
+      if (ingredientsToUse.length === 0) return totals;
+
+      const recipeIngredientCounts = (entry?.recipe?.ingredients || []).reduce((acc: Map<number, number>, ingredient: any) => {
+        const id = Number(ingredient?.ingredientId);
+        if (!Number.isFinite(id)) return acc;
+        acc.set(id, (acc.get(id) || 0) + 1);
+        return acc;
+      }, new Map<number, number>());
+      const occurrenceMap = new Map<number, number>();
+
+      ingredientsToUse.forEach((ri: any) => {
+        const ingredientId = Number(ri?.ingredientId);
+        if (!Number.isFinite(ingredientId)) return;
+
+        const occurrence = (occurrenceMap.get(ingredientId) || 0) + 1;
+        occurrenceMap.set(ingredientId, occurrence);
+
+        const recipeCount = recipeIngredientCounts.get(ingredientId) || 0;
+        if (occurrence > recipeCount) return;
+
+        const sourceIngredients = (entry?.recipe?.ingredients || []).filter((source: any) => Number(source?.ingredientId) === ingredientId);
+        const source = sourceIngredients[occurrence - 1] || sourceIngredients[0];
+        if ((source?.scalingType || "LINEAR") !== "FIXED") return;
+
+        const effectiveAmount = getEffectiveIngredientAmount(ri, entry);
+        if (effectiveAmount <= 0) return;
+
+        const current = totals.get(ingredientId);
+        totals.set(ingredientId, {
+          amount: (current?.amount || 0) + effectiveAmount,
+          ingredient: ri?.ingredient || current?.ingredient || null,
+        });
+      });
+
+      return totals;
+    };
+
     const sharedMap = new Map<string, { A: any; B: any }>();
 
     personEntries.A.forEach((entry: any) => {
@@ -1169,6 +1209,28 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
             calculatedAmount: scaledAmount,
           };
         });
+
+        if (Math.abs(recipeServings - 1) < 0.000001) {
+          const fixedTotals = collectFixedRecipeIngredientAmounts(pair.A);
+          collectFixedRecipeIngredientAmounts(pair.B).forEach((fixed, ingredientId) => {
+            const existing = fixedTotals.get(ingredientId);
+            fixedTotals.set(ingredientId, {
+              amount: (existing?.amount || 0) + fixed.amount,
+              ingredient: existing?.ingredient || fixed.ingredient || null,
+            });
+          });
+
+          scaledIngredients.forEach((ri: any) => {
+            if ((ri?.scalingType || "LINEAR") !== "FIXED") return;
+            const fixed = fixedTotals.get(Number(ri.ingredientId));
+            if (!fixed) return;
+            ri.amount = fixed.amount;
+            ri.calculatedAmount = fixed.amount;
+            if (!ri.ingredient && fixed.ingredient) {
+              ri.ingredient = fixed.ingredient;
+            }
+          });
+        }
 
         const addonTotals = collectFrequentAddonAmounts(pair.A);
         collectFrequentAddonAmounts(pair.B).forEach((addon, ingredientId) => {
