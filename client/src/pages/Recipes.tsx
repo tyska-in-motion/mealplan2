@@ -216,29 +216,31 @@ export default function Recipes() {
   const [selectedMealType, setSelectedMealType] = useState("lunch");
   const [selectedPerson, setSelectedPerson] = useState<"A" | "B">("A");
   const [addForBothPeople, setAddForBothPeople] = useState(true);
-  const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<number, number>>>({ A: {}, B: {} });
+  const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<string, number>>>({ A: {}, B: {} });
   const personName: Record<"A" | "B", string> = { A: "Tysia", B: "Mati" };
 
-  const setAddonAmount = (person: "A" | "B", ingredientId: number, amount: number) => {
+  const getAddonSelectionKey = (addon: any, index: number) => String(addon?.id ?? `${addon?.ingredientId}-${index}`);
+
+  const setAddonAmount = (person: "A" | "B", addonKey: string, amount: number) => {
     const safeAmount = Math.max(0, Math.round(amount));
     setSelectedFrequentAddons((prev) => ({
       ...prev,
       [person]: {
         ...prev[person],
-        [ingredientId]: safeAmount,
+        [addonKey]: safeAmount,
       },
     }));
   };
 
-  const adjustAddonAmount = (person: "A" | "B", ingredientId: number, delta: number) => {
-    const current = Number(selectedFrequentAddons?.[person]?.[ingredientId] || 0);
-    setAddonAmount(person, ingredientId, current + delta);
+  const adjustAddonAmount = (person: "A" | "B", addonKey: string, delta: number) => {
+    const current = Number(selectedFrequentAddons?.[person]?.[addonKey] || 0);
+    setAddonAmount(person, addonKey, current + delta);
   };
 
   const { data: dayPlan } = useDayPlan(selectedDate);
-  const { mutate: addEntry, isPending: isAddingToPlan } = useAddMealEntry();
+  const { mutateAsync: addEntry, isPending: isAddingToPlan } = useAddMealEntry();
 
-  const handleAddToPlan = () => {
+  const handleAddToPlan = async () => {
     if (!recipeToPlan) return;
 
     const isOccupiedA = dayPlan?.entries.some((e: any) => e.mealType === selectedMealType && (e.person || "A") === "A");
@@ -254,74 +256,70 @@ export default function Recipes() {
       return;
     }
 
+    const getAddonAmountForPerson = (person: "A" | "B", addon: any, index: number) => {
+      const addonKey = getAddonSelectionKey(addon, index);
+      const directAmount = selectedFrequentAddons?.[person]?.[addonKey];
+      if (directAmount !== undefined) return Number(directAmount) || 0;
+
+      if (addForBothPeople) {
+        const fallbackAmount = selectedFrequentAddons?.[selectedPerson]?.[addonKey];
+        if (fallbackAmount !== undefined) return Number(fallbackAmount) || 0;
+      }
+
+      return 0;
+    };
+
     const getSelectedAddonsForPerson = (person: "A" | "B") => (recipeToPlan?.frequentAddons || [])
-      .map((addon: any) => ({
+      .map((addon: any, index: number) => ({
         ...addon,
-        amount: Number(selectedFrequentAddons?.[person]?.[addon.ingredientId] || 0),
+        amount: getAddonAmountForPerson(person, addon, index),
       }))
       .filter((addon: any) => addon.amount > 0);
 
-    const addForPerson = (person: "A" | "B") =>
-      new Promise<void>((resolve, reject) => {
-        addEntry({
+    try {
+      for (const person of targetPeople) {
+        const createdEntry: any = await addEntry({
           date: selectedDate,
           mealType: selectedMealType,
           recipeId: recipeToPlan.id,
           person,
           isEaten: false,
-          servings: 1
-        }, {
-          onSuccess: async (createdEntry: any) => {
-            try {
-              const selectedAddons = getSelectedAddonsForPerson(person);
-              if (selectedAddons.length > 0) {
-                const baseIngredients = (recipeToPlan.ingredients || []).map((ri: any) => ({
-                  ingredientId: ri.ingredientId,
-                  amount: Number(ri.amount) || 0,
-                }));
-
-                const mergedIngredients = [...baseIngredients];
-                selectedAddons.forEach((addon: any) => {
-                  const existing = mergedIngredients.find((i) => i.ingredientId === addon.ingredientId);
-                  if (existing) {
-                    existing.amount += Number(addon.amount) || 0;
-                  } else {
-                    mergedIngredients.push({
-                      ingredientId: addon.ingredientId,
-                      amount: Number(addon.amount) || 0,
-                    });
-                  }
-                });
-
-                await updateMealEntry.mutateAsync({
-                  id: createdEntry.id,
-                  updates: {
-                    ingredients: mergedIngredients,
-                    servings: 1,
-                  },
-                });
-              }
-
-              resolve();
-            } catch (err) {
-              reject(err);
-            }
-          },
-          onError: (err: any) => reject(err),
+          servings: 1,
         });
-      });
 
-    Promise.all(targetPeople.map((person) => addForPerson(person)))
-      .then(() => {
-        setIsAddToPlanOpen(false);
-        setRecipeToPlan(null);
-        setSelectedFrequentAddons({ A: {}, B: {} });
-        setAddForBothPeople(true);
-        toast({ title: "Sukces", description: addForBothPeople ? "Przepis dodany do planu dla Tysi i Matiego." : `Przepis dodany do planu dla ${personName[selectedPerson]}.` });
-      })
-      .catch((err: any) => {
-        toast({ variant: "destructive", title: "Błąd", description: err?.message || "Nie udało się dodać przepisu." });
-      });
+        const selectedAddons = getSelectedAddonsForPerson(person);
+        if (selectedAddons.length > 0) {
+          const baseIngredients = (recipeToPlan.ingredients || []).map((ri: any) => ({
+            ingredientId: ri.ingredientId,
+            amount: Number(ri.amount) || 0,
+          }));
+
+          const mergedIngredients = [
+            ...baseIngredients,
+            ...selectedAddons.map((addon: any) => ({
+              ingredientId: addon.ingredientId,
+              amount: Number(addon.amount) || 0,
+            })),
+          ];
+
+          await updateMealEntry.mutateAsync({
+            id: createdEntry.id,
+            updates: {
+              ingredients: mergedIngredients,
+              servings: 1,
+            },
+          });
+        }
+      }
+
+      setIsAddToPlanOpen(false);
+      setRecipeToPlan(null);
+      setSelectedFrequentAddons({ A: {}, B: {} });
+      setAddForBothPeople(true);
+      toast({ title: "Sukces", description: addForBothPeople ? "Przepis dodany do planu dla Tysi i Matiego." : `Przepis dodany do planu dla ${personName[selectedPerson]}.` });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Błąd", description: err?.message || "Nie udało się dodać przepisu." });
+    }
   };
 
   const next7Days = Array.from({ length: 7 }, (_, i) => {
@@ -1448,28 +1446,30 @@ export default function Recipes() {
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Sugerowane dodatki</label>
                 <div className="space-y-2 rounded-xl border border-border/60 bg-secondary/20 p-3">
-                  {(recipeToPlan.frequentAddons || []).map((addon: any) => (
-                    <div key={addon.ingredientId} className="space-y-1 rounded-lg border bg-white p-2 text-sm">
+                  {(recipeToPlan.frequentAddons || []).map((addon: any, index: number) => {
+                    const addonKey = getAddonSelectionKey(addon, index);
+                    return (
+                    <div key={addonKey} className="space-y-1 rounded-lg border bg-white p-2 text-sm">
                       <div className="font-medium">{addon.ingredient?.name || "Składnik"}</div>
                       <div className="text-xs text-muted-foreground">Krok: +{formatLocalizedNumber(Number(addon.baseAmount ?? addon.amount) || 0)} {addon.unit || "g"}</div>
                       {(["A", "B"] as const).map((person) => (
-                        <div key={`${addon.ingredientId}-${person}`} className="flex items-center gap-2">
+                        <div key={`${addonKey}-${person}`} className="flex items-center gap-2">
                           <span className="w-12 text-xs text-muted-foreground font-semibold">{personName[person]}</span>
                           <Button
                             type="button"
                             variant="outline"
                             size="icon"
                             className="h-8 w-8"
-                            onClick={() => adjustAddonAmount(person, addon.ingredientId, -(Number(addon.baseAmount ?? addon.amount) || 0))}
+                            onClick={() => adjustAddonAmount(person, addonKey, -(Number(addon.baseAmount ?? addon.amount) || 0))}
                           >
                             -
                           </Button>
                           <Input
                             type="number"
                             min={0}
-                            value={selectedFrequentAddons[person][addon.ingredientId] || 0}
+                            value={selectedFrequentAddons[person][addonKey] || 0}
                             onChange={(e) => {
-                              setAddonAmount(person, addon.ingredientId, Number(e.target.value) || 0);
+                              setAddonAmount(person, addonKey, Number(e.target.value) || 0);
                             }}
                             className="h-8 w-24"
                           />
@@ -1478,7 +1478,7 @@ export default function Recipes() {
                             variant="outline"
                             size="icon"
                             className="h-8 w-8"
-                            onClick={() => adjustAddonAmount(person, addon.ingredientId, Number(addon.baseAmount ?? addon.amount) || 0)}
+                            onClick={() => adjustAddonAmount(person, addonKey, Number(addon.baseAmount ?? addon.amount) || 0)}
                           >
                             +
                           </Button>
@@ -1486,7 +1486,7 @@ export default function Recipes() {
                         </div>
                       ))}
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             )}
