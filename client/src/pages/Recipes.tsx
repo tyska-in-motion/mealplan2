@@ -256,10 +256,23 @@ export default function Recipes() {
       return;
     }
 
+    const getAddonAmountForPerson = (person: "A" | "B", addon: any, index: number) => {
+      const addonKey = getAddonSelectionKey(addon, index);
+      const directAmount = selectedFrequentAddons?.[person]?.[addonKey];
+      if (directAmount !== undefined) return Number(directAmount) || 0;
+
+      if (addForBothPeople) {
+        const fallbackAmount = selectedFrequentAddons?.[selectedPerson]?.[addonKey];
+        if (fallbackAmount !== undefined) return Number(fallbackAmount) || 0;
+      }
+
+      return 0;
+    };
+
     const getSelectedAddonsForPerson = (person: "A" | "B") => (recipeToPlan?.frequentAddons || [])
       .map((addon: any, index: number) => ({
         ...addon,
-        amount: Number(selectedFrequentAddons?.[person]?.[getAddonSelectionKey(addon, index)] || 0),
+        amount: getAddonAmountForPerson(person, addon, index),
       }))
       .filter((addon: any) => addon.amount > 0);
 
