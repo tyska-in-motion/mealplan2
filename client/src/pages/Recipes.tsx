@@ -238,9 +238,9 @@ export default function Recipes() {
   };
 
   const { data: dayPlan } = useDayPlan(selectedDate);
-  const { mutate: addEntry, isPending: isAddingToPlan } = useAddMealEntry();
+  const { mutateAsync: addEntry, isPending: isAddingToPlan } = useAddMealEntry();
 
-  const handleAddToPlan = () => {
+  const handleAddToPlan = async () => {
     if (!recipeToPlan) return;
 
     const isOccupiedA = dayPlan?.entries.some((e: any) => e.mealType === selectedMealType && (e.person || "A") === "A");
@@ -276,62 +276,50 @@ export default function Recipes() {
       }))
       .filter((addon: any) => addon.amount > 0);
 
-    const addForPerson = (person: "A" | "B") =>
-      new Promise<void>((resolve, reject) => {
-        addEntry({
+    try {
+      for (const person of targetPeople) {
+        const createdEntry: any = await addEntry({
           date: selectedDate,
           mealType: selectedMealType,
           recipeId: recipeToPlan.id,
           person,
           isEaten: false,
-          servings: 1
-        }, {
-          onSuccess: async (createdEntry: any) => {
-            try {
-              const selectedAddons = getSelectedAddonsForPerson(person);
-              if (selectedAddons.length > 0) {
-                const baseIngredients = (recipeToPlan.ingredients || []).map((ri: any) => ({
-                  ingredientId: ri.ingredientId,
-                  amount: Number(ri.amount) || 0,
-                }));
-
-                const mergedIngredients = [
-                  ...baseIngredients,
-                  ...selectedAddons.map((addon: any) => ({
-                    ingredientId: addon.ingredientId,
-                    amount: Number(addon.amount) || 0,
-                  })),
-                ];
-
-                await updateMealEntry.mutateAsync({
-                  id: createdEntry.id,
-                  updates: {
-                    ingredients: mergedIngredients,
-                    servings: 1,
-                  },
-                });
-              }
-
-              resolve();
-            } catch (err) {
-              reject(err);
-            }
-          },
-          onError: (err: any) => reject(err),
+          servings: 1,
         });
-      });
 
-    Promise.all(targetPeople.map((person) => addForPerson(person)))
-      .then(() => {
-        setIsAddToPlanOpen(false);
-        setRecipeToPlan(null);
-        setSelectedFrequentAddons({ A: {}, B: {} });
-        setAddForBothPeople(true);
-        toast({ title: "Sukces", description: addForBothPeople ? "Przepis dodany do planu dla Tysi i Matiego." : `Przepis dodany do planu dla ${personName[selectedPerson]}.` });
-      })
-      .catch((err: any) => {
-        toast({ variant: "destructive", title: "Błąd", description: err?.message || "Nie udało się dodać przepisu." });
-      });
+        const selectedAddons = getSelectedAddonsForPerson(person);
+        if (selectedAddons.length > 0) {
+          const baseIngredients = (recipeToPlan.ingredients || []).map((ri: any) => ({
+            ingredientId: ri.ingredientId,
+            amount: Number(ri.amount) || 0,
+          }));
+
+          const mergedIngredients = [
+            ...baseIngredients,
+            ...selectedAddons.map((addon: any) => ({
+              ingredientId: addon.ingredientId,
+              amount: Number(addon.amount) || 0,
+            })),
+          ];
+
+          await updateMealEntry.mutateAsync({
+            id: createdEntry.id,
+            updates: {
+              ingredients: mergedIngredients,
+              servings: 1,
+            },
+          });
+        }
+      }
+
+      setIsAddToPlanOpen(false);
+      setRecipeToPlan(null);
+      setSelectedFrequentAddons({ A: {}, B: {} });
+      setAddForBothPeople(true);
+      toast({ title: "Sukces", description: addForBothPeople ? "Przepis dodany do planu dla Tysi i Matiego." : `Przepis dodany do planu dla ${personName[selectedPerson]}.` });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Błąd", description: err?.message || "Nie udało się dodać przepisu." });
+    }
   };
 
   const next7Days = Array.from({ length: 7 }, (_, i) => {
