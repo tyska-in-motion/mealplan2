@@ -1098,6 +1098,44 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
   }), [personEntries]);
 
   const sharedEntries = useMemo(() => {
+    const collectFrequentAddonAmounts = (entry: any) => {
+      const addonTotals = new Map<number, { amount: number; ingredient: any }>();
+      const ingredientsToUse = entry?.ingredients?.length > 0 ? entry.ingredients : [];
+      if (ingredientsToUse.length === 0) return addonTotals;
+
+      const frequentAddonIds = new Set<number>(((entry?.recipe?.frequentAddons) || []).map((addon: any) => Number(addon.ingredientId)));
+      const recipeIngredientCounts = (entry?.recipe?.ingredients || []).reduce((acc: Map<number, number>, ingredient: any) => {
+        const id = Number(ingredient?.ingredientId);
+        if (!Number.isFinite(id)) return acc;
+        acc.set(id, (acc.get(id) || 0) + 1);
+        return acc;
+      }, new Map<number, number>());
+      const occurrenceMap = new Map<number, number>();
+
+      ingredientsToUse.forEach((ri: any) => {
+        const ingredientId = Number(ri?.ingredientId);
+        if (!Number.isFinite(ingredientId)) return;
+
+        const occurrence = (occurrenceMap.get(ingredientId) || 0) + 1;
+        occurrenceMap.set(ingredientId, occurrence);
+
+        const recipeCount = recipeIngredientCounts.get(ingredientId) || 0;
+        const isFrequentAddon = frequentAddonIds.has(ingredientId) && occurrence > recipeCount;
+        if (!isFrequentAddon) return;
+
+        const effectiveAmount = getEffectiveIngredientAmount(ri, entry);
+        if (effectiveAmount <= 0) return;
+
+        const current = addonTotals.get(ingredientId);
+        addonTotals.set(ingredientId, {
+          amount: (current?.amount || 0) + effectiveAmount,
+          ingredient: ri?.ingredient || current?.ingredient || null,
+        });
+      });
+
+      return addonTotals;
+    };
+
     const sharedMap = new Map<string, { A: any; B: any }>();
 
     personEntries.A.forEach((entry: any) => {
@@ -1130,6 +1168,37 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
             amount: scaledAmount,
             calculatedAmount: scaledAmount,
           };
+        });
+
+        const addonTotals = collectFrequentAddonAmounts(pair.A);
+        collectFrequentAddonAmounts(pair.B).forEach((addon, ingredientId) => {
+          const existing = addonTotals.get(ingredientId);
+          addonTotals.set(ingredientId, {
+            amount: (existing?.amount || 0) + addon.amount,
+            ingredient: existing?.ingredient || addon.ingredient || null,
+          });
+        });
+
+        addonTotals.forEach((addon, ingredientId) => {
+          const existingIngredient = scaledIngredients.find((ri: any) => Number(ri.ingredientId) === ingredientId);
+          if (existingIngredient) {
+            const nextAmount = (Number(existingIngredient.amount) || 0) + addon.amount;
+            existingIngredient.amount = nextAmount;
+            existingIngredient.calculatedAmount = nextAmount;
+            if (!existingIngredient.ingredient && addon.ingredient) {
+              existingIngredient.ingredient = addon.ingredient;
+            }
+            return;
+          }
+
+          scaledIngredients.push({
+            ingredientId,
+            amount: addon.amount,
+            calculatedAmount: addon.amount,
+            ingredient: addon.ingredient,
+            scalingType: "FIXED",
+            baseAmount: addon.amount,
+          });
         });
 
         return {
