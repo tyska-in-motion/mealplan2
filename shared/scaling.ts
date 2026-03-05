@@ -147,8 +147,14 @@ export function calculateScaledAmount(
   const scalingType = ingredient.scalingType || "LINEAR";
 
   switch (scalingType) {
-    case "FIXED":
-      return baseAmount;
+    case "FIXED": {
+      // FIXED means: amount is fixed for the whole base recipe batch.
+      // When user plans fewer servings than the recipe base, distribute proportionally.
+      // When user plans more servings, keep the fixed cap (do not increase further).
+      const normalizedBaseServings = baseServings > 0 ? baseServings : 1;
+      const ratio = newServings / normalizedBaseServings;
+      return baseAmount * Math.min(1, Math.max(0, ratio));
+    }
     case "STEP": {
       const thresholds = (ingredient.stepThresholds || [])
         .map((threshold) => ({
