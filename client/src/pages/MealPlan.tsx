@@ -53,6 +53,23 @@ export default function MealPlan() {
     });
   }, [baseDate]);
 
+  useEffect(() => {
+    const query = location.split("?")[1] || "";
+    const hash = location.includes("#") ? location.split("#")[1] : "";
+    const params = new URLSearchParams(query.split("#")[0] || "");
+    const requestedDate = params.get("date") || format(new Date(), "yyyy-MM-dd");
+    const targetId = hash || `day-${requestedDate}`;
+
+    const scrollToTarget = () => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
+    const timer = window.setTimeout(scrollToTarget, 120);
+    return () => window.clearTimeout(timer);
+  }, [location, weekDays]);
+
   const { data: recipes } = useRecipes();
   const { mutate: addEntry } = useAddMealEntry();
   const { mutate: deleteEntry } = useDeleteMealEntry();
@@ -543,7 +560,8 @@ export default function MealPlan() {
         {weekDays.map((day) => (
           <DaySection 
             key={day.toISOString()} 
-            day={day} 
+            day={day}
+            sectionId={`day-${format(day, "yyyy-MM-dd")}`} 
             recipes={recipes}
             onAddMeal={handleOpenAdd}
             onAddCustom={handleOpenCustom}
@@ -998,7 +1016,7 @@ export default function MealPlan() {
   );
 }
 
-function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onDeleteMeal, onToggleEaten, onUpdateEntry, onViewRecipe, onViewPlannedRecipe }: any) {
+function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngredient, onDeleteMeal, onToggleEaten, onUpdateEntry, onViewRecipe, onViewPlannedRecipe }: any) {
   const [servingInputs, setServingInputs] = useState<Record<number, string>>({});
   const dateStr = format(day, "yyyy-MM-dd");
   const { data: dayPlan, isLoading } = useDayPlan(dateStr);
@@ -1149,7 +1167,7 @@ function DaySection({ day, recipes, onAddMeal, onAddCustom, onAddIngredient, onD
   };
 
   return (
-    <div className={cn("space-y-6", isToday && "bg-primary/5 -mx-4 px-4 py-8 rounded-3xl border border-primary/10")}>
+    <div id={sectionId} className={cn("space-y-6", isToday && "bg-primary/5 -mx-4 px-4 py-8 rounded-3xl border border-primary/10")}>
       <div className="flex flex-col md:flex-row md:items-baseline gap-4 mb-4">
         <div className="flex flex-wrap items-baseline gap-2 sm:gap-4">
           <h2 className="text-2xl font-bold font-display">{format(day, "EEEE", { locale: pl })}</h2>

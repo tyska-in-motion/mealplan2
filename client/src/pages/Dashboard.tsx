@@ -795,7 +795,7 @@ export default function Dashboard() {
             <Link href={`/meal-plan?date=${dateStr}#shared-meals`}>
               <span className="text-emerald-700 text-sm font-semibold hover:underline cursor-pointer">Wspólne posiłki</span>
             </Link>
-            <Link href="/meal-plan">
+            <Link href={`/meal-plan?date=${dateStr}`}>
               <span className="text-primary text-sm font-semibold hover:underline cursor-pointer">Edytuj Plan</span>
             </Link>
           </div>
@@ -808,7 +808,7 @@ export default function Dashboard() {
             </div>
             <h3 className="text-lg font-semibold text-foreground">Brak zaplanowanych posiłków na ten dzień</h3>
             <p className="text-muted-foreground mb-4">Zacznij dodawać zdrowe przepisy do swojego harmonogramu!</p>
-            <Link href="/meal-plan">
+            <Link href={`/meal-plan?date=${dateStr}`}>
               <button className="bg-primary text-primary-foreground px-6 py-2 rounded-xl font-medium hover:bg-primary/90 transition-colors">
                 Zaplanuj posiłki
               </button>

@@ -601,6 +601,7 @@ export default function Recipes() {
         <div>
           <h1 className="text-3xl font-bold">Przepisy</h1>
           <p className="text-muted-foreground">Znajdź lub stwórz swój kolejny ulubiony posiłek.</p>
+          <p className="text-sm text-muted-foreground mt-1">Dodane przepisy: {recipes?.length || 0}</p>
         </div>
         
         <Dialog open={isOpen} onOpenChange={(open) => { if (!open) closeDialog(); else setIsOpen(true); }}>
