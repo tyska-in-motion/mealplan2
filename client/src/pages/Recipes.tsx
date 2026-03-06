@@ -219,7 +219,8 @@ export default function Recipes() {
   const [addForBothPeople, setAddForBothPeople] = useState(true);
   const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<string, number>>>({ A: {}, B: {} });
   const [selectedRecipeServings, setSelectedRecipeServings] = useState(1);
-  const [selectedSuggestedRecipes, setSelectedSuggestedRecipes] = useState<Record<string, boolean>>({});
+  const [selectedSuggestedRecipes, setSelectedSuggestedRecipes] = useState<Record<string, number>>({});
+  const [suggestedRecipeSearch, setSuggestedRecipeSearch] = useState("");
   const personName: Record<"A" | "B", string> = { A: "Tysia", B: "Mati" };
 
   const getAddonSelectionKey = (addon: any, index: number) => String(addon?.id ?? `${addon?.ingredientId}-${index}`);
@@ -333,10 +334,10 @@ export default function Recipes() {
         }
 
         const selectedSuggestions = suggestedRecipeOptionsForPlan
-          .filter((entry: any) => !!selectedSuggestedRecipes[String(entry.id)])
+          .filter((entry: any) => Number(selectedSuggestedRecipes[String(entry.id)] || 0) > 0)
           .map((entry: any) => ({
             recipeId: Number(entry.id),
-            servings: 1,
+            servings: Number(selectedSuggestedRecipes[String(entry.id)] || 0) || 1,
           }));
 
         for (const suggestion of selectedSuggestions) {
@@ -540,6 +541,7 @@ export default function Recipes() {
         })
     );
     setInstructionLinks(initialLinks);
+    setSuggestedRecipeSearch("");
     setIsOpen(true);
   };
 
@@ -560,6 +562,7 @@ export default function Recipes() {
       frequentAddons: [],
     });
     setInstructionLinks([]);
+    setSuggestedRecipeSearch("");
     setNewInstructionLink({ stepIndex: 0, text: "", ingredientId: 0, ingredientSource: "ingredient", multiplier: 1 });
   };
 
@@ -1156,9 +1159,22 @@ export default function Recipes() {
 
               <details className="rounded-xl border border-border/70 bg-secondary/20 p-3">
                 <summary className="cursor-pointer text-sm font-medium">Sugerowane przepisy (opcjonalnie)</summary>
+                <div className="mt-3">
+                  <Input
+                    value={suggestedRecipeSearch}
+                    onChange={(e) => setSuggestedRecipeSearch(e.target.value)}
+                    placeholder="Szukaj przepisu..."
+                    className="h-9"
+                  />
+                </div>
                 <div className="mt-3 max-h-52 overflow-y-auto rounded-md border bg-white p-2 space-y-2">
                   {(recipes || [])
                     .filter((candidate: any) => Number(candidate.id) !== Number(editingRecipe?.id || 0))
+                    .filter((candidate: any) => {
+                      const normalizedQuery = suggestedRecipeSearch.trim().toLowerCase();
+                      if (!normalizedQuery) return true;
+                      return String(candidate?.name || "").toLowerCase().includes(normalizedQuery);
+                    })
                     .map((candidate: any) => {
                       const current = form.watch("suggestedRecipes") || [];
                       const selectedItem = current.find((item: any) => Number(item.recipeId) === Number(candidate.id));
@@ -1177,7 +1193,28 @@ export default function Recipes() {
                             }}
                           />
                           <span className="flex-1">{candidate.name}</span>
-
+                          {selected && (
+                            <Input
+                              type="number"
+                              min={0.25}
+                              step={0.25}
+                              className="h-8 w-20"
+                              value={Number(selectedItem?.servings) || 1}
+                              onChange={(e) => {
+                                const nextServings = Math.max(0.25, Number(e.target.value) || 1);
+                                const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({
+                                  recipeId: Number(item.recipeId),
+                                  servings: Number(item.servings) || 1,
+                                }));
+                                const next = existing.map((item: any) =>
+                                  Number(item.recipeId) === Number(candidate.id)
+                                    ? { ...item, servings: nextServings }
+                                    : item
+                                );
+                                form.setValue("suggestedRecipes", next, { shouldDirty: true });
+                              }}
+                            />
+                          )}
                         </div>
                       );
                     })}
@@ -1462,15 +1499,16 @@ export default function Recipes() {
           setAddForBothPeople(true);
           setSelectedPerson("A");
           setSelectedRecipeServings(Number(servingsOverride) > 0 ? Number(servingsOverride) : 1);
-          const initialSuggestions = ((recipe?.suggestedRecipes || []) as any[]).reduce((acc: Record<string, boolean>, item: any) => {
+          const initialSuggestions = ((recipe?.suggestedRecipes || []) as any[]).reduce((acc: Record<string, number>, item: any) => {
             const recipeId = Number(item?.recipeId);
-            if (Number.isFinite(recipeId) && recipeId > 0) acc[String(recipeId)] = true;
+            const servings = Number(item?.servings) || 1;
+            if (Number.isFinite(recipeId) && recipeId > 0) acc[String(recipeId)] = servings;
             return acc;
           }, {});
           if (Object.keys(initialSuggestions).length === 0) {
             ((recipe?.suggestedRecipeIds || []) as any[]).forEach((id: any) => {
               const recipeId = Number(id);
-              if (Number.isFinite(recipeId) && recipeId > 0) initialSuggestions[String(recipeId)] = true;
+              if (Number.isFinite(recipeId) && recipeId > 0) initialSuggestions[String(recipeId)] = 1;
             });
           }
           setSelectedSuggestedRecipes(initialSuggestions);
@@ -1538,21 +1576,35 @@ export default function Recipes() {
                 <div className="space-y-2 rounded-xl border border-border/60 bg-secondary/20 p-3">
                   {suggestedRecipeOptionsForPlan.map((entry: any) => {
                     const key = String(entry.id);
-                    const selected = !!selectedSuggestedRecipes[key];
+                    const amount = Number(selectedSuggestedRecipes[key] ?? 0);
                     return (
-                      <label key={entry.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={selected}
+                      <div key={entry.id} className="flex items-center gap-2 text-sm">
+                        <label className="flex items-center gap-2 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={amount > 0}
+                            onChange={(e) => {
+                              setSelectedSuggestedRecipes((prev) => ({
+                                ...prev,
+                                [key]: e.target.checked ? (amount > 0 ? amount : 1) : 0,
+                              }));
+                            }}
+                          />
+                          <span>{entry.name}</span>
+                        </label>
+                        <Input
+                          type="number"
+                          min={0.25}
+                          step={0.25}
+                          className="h-8 w-20"
+                          disabled={amount <= 0}
+                          value={amount > 0 ? amount : 1}
                           onChange={(e) => {
-                            setSelectedSuggestedRecipes((prev) => ({
-                              ...prev,
-                              [key]: e.target.checked,
-                            }));
+                            const nextAmount = Math.max(0.25, Number(e.target.value) || 1);
+                            setSelectedSuggestedRecipes((prev) => ({ ...prev, [key]: nextAmount }));
                           }}
                         />
-                        <span>{entry.name}</span>
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
