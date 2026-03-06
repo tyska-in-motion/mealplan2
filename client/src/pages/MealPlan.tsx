@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { format, addDays, subDays, startOfWeek, eachDayOfInterval } from "date-fns";
 import { pl } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, X, CheckCircle2, Circle, Minus, Eye, Carrot, Copy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, CheckCircle2, Circle, Minus, Eye, Carrot, Copy, Trash2 } from "lucide-react";
 import { useDayPlan, useAddMealEntry, useDeleteMealEntry, useToggleEaten, useUpdateMealEntry, useCopyDayPlan } from "@/hooks/use-meal-plan";
 import { useRecipes } from "@/hooks/use-recipes";
 import { useIngredients } from "@/hooks/use-ingredients";
@@ -1185,9 +1185,14 @@ export default function MealPlan() {
 
 function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngredient, onDeleteMeal, onToggleEaten, onUpdateEntry, onViewRecipe, onViewPlannedRecipe }: any) {
   const [servingInputs, setServingInputs] = useState<Record<number, string>>({});
+  const [selectedEntries, setSelectedEntries] = useState<Record<number, boolean>>({});
   const dateStr = format(day, "yyyy-MM-dd");
   const { data: dayPlan, isLoading } = useDayPlan(dateStr);
   const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
+
+  useEffect(() => {
+    setSelectedEntries({});
+  }, [dateStr]);
 
   const getEffectiveIngredientAmount = (ri: any, entry: any) => {
     if (typeof ri?.calculatedAmount === "number") return ri.calculatedAmount;
@@ -1464,6 +1469,38 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
     });
   };
 
+  const dayEntries = dayPlan?.entries || [];
+  const selectedEntryIds = Object.entries(selectedEntries)
+    .filter(([, checked]) => checked)
+    .map(([id]) => Number(id))
+    .filter((id) => Number.isFinite(id));
+
+  const deleteEntries = (entryIds: number[]) => {
+    entryIds.forEach((id) => onDeleteMeal({ id, date: dateStr }));
+    setSelectedEntries((prev) => {
+      const next = { ...prev };
+      entryIds.forEach((id) => {
+        delete next[id];
+      });
+      return next;
+    });
+  };
+
+  const clearPersonDay = (person: "A" | "B") => {
+    const ids = dayEntries
+      .filter((entry: any) => (entry.person || "A") === person)
+      .map((entry: any) => Number(entry.id))
+      .filter((id: number) => Number.isFinite(id));
+    deleteEntries(ids);
+  };
+
+  const clearWholeDay = () => {
+    const ids = dayEntries
+      .map((entry: any) => Number(entry.id))
+      .filter((id: number) => Number.isFinite(id));
+    deleteEntries(ids);
+  };
+
   return (
     <div id={sectionId} className={cn("space-y-6", isToday && "bg-primary/5 -mx-4 px-4 py-8 rounded-3xl border border-primary/10")}>
       <div className="flex flex-col md:flex-row md:items-baseline gap-4 mb-4">
@@ -1472,6 +1509,23 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
           <span className="text-muted-foreground">{format(day, "d MMMM", { locale: pl })}</span>
           {isToday && <span className="text-xs font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-1 rounded-full">Dzisiaj</span>}
         </div>
+
+        {dayEntries.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              disabled={selectedEntryIds.length === 0}
+              onClick={() => deleteEntries(selectedEntryIds)}
+            >
+              <Trash2 className="mr-1 h-3.5 w-3.5" /> Usuń zaznaczone ({selectedEntryIds.length})
+            </Button>
+            <Button variant="outline" size="sm" className="h-8" onClick={() => clearPersonDay("A")}>Wyczyść dzień Tysi</Button>
+            <Button variant="outline" size="sm" className="h-8" onClick={() => clearPersonDay("B")}>Wyczyść dzień Matiego</Button>
+            <Button variant="destructive" size="sm" className="h-8" onClick={clearWholeDay}>Wyczyść cały dzień</Button>
+          </div>
+        )}
 
         {dayPlan && (
           <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -1565,6 +1619,13 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
                       <div className="space-y-3 flex-1">
                         {entries.map((entry: any) => (
                           <div key={entry.id} className="group relative flex items-center gap-3 bg-background p-2 rounded-xl border border-border">
+                            <input
+                              type="checkbox"
+                              checked={!!selectedEntries[entry.id]}
+                              onChange={(e) => setSelectedEntries((prev) => ({ ...prev, [entry.id]: e.target.checked }))}
+                              aria-label={`Zaznacz posiłek ${entry.recipe?.name || entry.customName}`}
+                              className="h-4 w-4"
+                            />
                             {entry.recipe ? (
                               <div className="w-10 h-10 rounded-lg bg-cover bg-center flex-shrink-0" style={{ backgroundImage: `url(${entry.recipe.imageUrl})` }} />
                             ) : (
