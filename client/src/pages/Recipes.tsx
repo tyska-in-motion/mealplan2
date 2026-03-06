@@ -43,6 +43,7 @@ const createRecipeSchema = z.object({
   prepTime: z.coerce.number().min(0),
   servings: z.coerce.number().min(0.1).default(1),
   imageUrl: z.string().optional().or(z.literal("")),
+  suggestedRecipes: z.array(z.object({ recipeId: z.coerce.number(), servings: z.coerce.number().min(0.1) })).optional().default([]),
   ingredients: z.array(z.object({
     ingredientId: z.coerce.number(),
     amount: z.coerce.number().min(0).optional().default(0),
@@ -217,6 +218,7 @@ export default function Recipes() {
   const [selectedPerson, setSelectedPerson] = useState<"A" | "B">("A");
   const [addForBothPeople, setAddForBothPeople] = useState(true);
   const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<string, number>>>({ A: {}, B: {} });
+  const [selectedRecipeServings, setSelectedRecipeServings] = useState(1);
   const personName: Record<"A" | "B", string> = { A: "Tysia", B: "Mati" };
 
   const getAddonSelectionKey = (addon: any, index: number) => String(addon?.id ?? `${addon?.ingredientId}-${index}`);
@@ -284,7 +286,7 @@ export default function Recipes() {
           recipeId: recipeToPlan.id,
           person,
           isEaten: false,
-          servings: 1,
+          servings: selectedRecipeServings,
         });
 
         const selectedAddons = getSelectedAddonsForPerson(person);
@@ -306,7 +308,7 @@ export default function Recipes() {
             id: createdEntry.id,
             updates: {
               ingredients: mergedIngredients,
-              servings: 1,
+              servings: selectedRecipeServings,
             },
           });
         }
@@ -316,6 +318,7 @@ export default function Recipes() {
       setRecipeToPlan(null);
       setSelectedFrequentAddons({ A: {}, B: {} });
       setAddForBothPeople(true);
+      setSelectedRecipeServings(1);
       toast({ title: "Sukces", description: addForBothPeople ? "Przepis dodany do planu dla Tysi i Matiego." : `Przepis dodany do planu dla ${personName[selectedPerson]}.` });
     } catch (err: any) {
       toast({ variant: "destructive", title: "Błąd", description: err?.message || "Nie udało się dodać przepisu." });
@@ -341,6 +344,7 @@ export default function Recipes() {
       prepTime: 15,
       servings: 1,
       imageUrl: "",
+      suggestedRecipes: [],
       ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", alternativeAmount: undefined, alternativeUnit: "", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
       frequentAddons: [] as { ingredientId: number; amount: number; baseAmount?: number; unit?: string; alternativeAmount?: number; alternativeUnit?: string; scalingType?: ScalingType; scalingFormula?: string; stepThresholds?: { minServings: number; maxServings?: number | null; amount: number }[] }[],
     },
@@ -454,6 +458,9 @@ export default function Recipes() {
       prepTime: recipe.prepTime,
       servings: recipe.servings || 1,
       imageUrl: recipe.imageUrl || "",
+      suggestedRecipes: ((recipe.suggestedRecipes || []).length > 0 ? recipe.suggestedRecipes : (recipe.suggestedRecipeIds || []).map((id: any) => ({ recipeId: Number(id), servings: 1 })))
+        .map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }))
+        .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0),
       ingredients: recipe.ingredients.map((ri: any) => ({
         ingredientId: ri.ingredientId,
         amount: Number(ri.baseAmount ?? ri.amount ?? 0),
@@ -510,6 +517,7 @@ export default function Recipes() {
       prepTime: 15,
       servings: 1,
       imageUrl: "",
+      suggestedRecipes: [],
       ingredients: [{ ingredientId: 0, amount: 100, baseAmount: 100, unit: "g", alternativeAmount: undefined, alternativeUnit: "", scalingType: "LINEAR", scalingFormula: "", stepThresholds: [] }],
       frequentAddons: [],
     });
@@ -530,6 +538,9 @@ export default function Recipes() {
       prepTime: recipe.prepTime || 0,
       imageUrl: recipe.imageUrl || "",
       servings: Number(recipe.servings) || 1,
+      suggestedRecipes: ((recipe.suggestedRecipes || []).length > 0 ? recipe.suggestedRecipes : (recipe.suggestedRecipeIds || []).map((id: any) => ({ recipeId: Number(id), servings: 1 })))
+        .map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }))
+        .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0),
       isFavorite: !recipe.isFavorite,
       ingredients: (recipe.ingredients || []).map((ri: any) => ({
         ingredientId: ri.ingredientId,
@@ -570,6 +581,10 @@ export default function Recipes() {
     const normalizedData = {
       ...data,
       instructionSteps,
+      suggestedRecipes: (data.suggestedRecipes || [])
+        .map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) }))
+        .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0 && Number.isFinite(item.servings) && item.servings > 0),
+      suggestedRecipeIds: (data.suggestedRecipes || []).map((item: any) => Number(item.recipeId)).filter((id: number) => Number.isFinite(id) && id > 0),
       ingredients: (data.ingredients || []).map((ingredient: any) => ({
         ...ingredient,
         baseAmount: Number(ingredient.baseAmount ?? ingredient.amount ?? 0),
@@ -666,6 +681,52 @@ export default function Recipes() {
                 <div>
                   <label className="text-sm font-medium mb-1 block">Liczba porcji</label>
                   <Input type="number" step="0.1" {...form.register("servings")} min="0.1" />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="text-sm font-medium mb-1 block">Sugerowane dodatki (inne przepisy + porcje)</label>
+                  <div className="max-h-52 overflow-y-auto rounded-md border p-2 space-y-2">
+                    {(recipes || [])
+                      .filter((candidate: any) => Number(candidate.id) !== Number(editingRecipe?.id || 0))
+                      .map((candidate: any) => {
+                        const current = form.watch("suggestedRecipes") || [];
+                        const selectedItem = current.find((item: any) => Number(item.recipeId) === Number(candidate.id));
+                        const selected = !!selectedItem;
+                        return (
+                          <div key={candidate.id} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={(e) => {
+                                const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }));
+                                const next = e.target.checked
+                                  ? [...existing.filter((item: any) => Number(item.recipeId) !== Number(candidate.id)), { recipeId: Number(candidate.id), servings: 1 }]
+                                  : existing.filter((item: any) => Number(item.recipeId) !== Number(candidate.id));
+                                form.setValue("suggestedRecipes", next, { shouldDirty: true });
+                              }}
+                            />
+                            <span className="flex-1">{candidate.name}</span>
+                            <Input
+                              type="number"
+                              step="0.25"
+                              min="0.1"
+                              className="w-24 h-8"
+                              disabled={!selected}
+                              value={selectedItem?.servings ?? 1}
+                              onChange={(e) => {
+                                const nextServings = Math.max(0.1, Number(e.target.value) || 1);
+                                const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }));
+                                const next = existing.map((item: any) => Number(item.recipeId) === Number(candidate.id) ? { ...item, servings: nextServings } : item);
+                                form.setValue("suggestedRecipes", next, { shouldDirty: true });
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    {(recipes || []).filter((candidate: any) => Number(candidate.id) !== Number(editingRecipe?.id || 0)).length === 0 && (
+                      <p className="text-xs text-muted-foreground">Brak innych przepisów do powiązania.</p>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="col-span-2">
@@ -1225,7 +1286,8 @@ export default function Recipes() {
                     setSelectedFrequentAddons({ A: {}, B: {} });
                     setAddForBothPeople(true);
                     setSelectedPerson("A");
-                    setIsAddToPlanOpen(true);
+                    setSelectedRecipeServings(1);
+          setIsAddToPlanOpen(true);
                   }}
                   className="bg-white/80 p-2 rounded-full text-primary hover:bg-white transition-colors"
                   title="Dodaj do planu"
@@ -1366,15 +1428,17 @@ export default function Recipes() {
         recipe={viewingRecipe}
         isOpen={!!viewingRecipe}
         onClose={() => setViewingRecipe(null)}
-        onAddToPlan={(recipe) => {
+        onAddToPlan={(recipe, servingsOverride) => {
           setRecipeToPlan(recipe);
           setViewingRecipe(null);
           setSelectedFrequentAddons({ A: {}, B: {} });
           setAddForBothPeople(true);
           setSelectedPerson("A");
+          setSelectedRecipeServings(Number(servingsOverride) > 0 ? Number(servingsOverride) : 1);
           setIsAddToPlanOpen(true);
         }}
         availableIngredientIds={effectiveAvailableIngredientIds}
+        allRecipes={recipes || []}
       />
 
       <Dialog
@@ -1385,6 +1449,7 @@ export default function Recipes() {
             setSelectedFrequentAddons({ A: {}, B: {} });
             setAddForBothPeople(true);
             setSelectedPerson("A");
+            setSelectedRecipeServings(1);
           }
         }}
       >
@@ -1421,6 +1486,10 @@ export default function Recipes() {
                   <SelectItem value="snack">Przekąska</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Liczba porcji przepisu</label>
+              <Input type="number" step="0.25" min="0.1" value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.1, Number(e.target.value) || 1))} />
             </div>
             <div className="grid gap-2">
               <label className="text-sm font-medium">Dla kogo</label>

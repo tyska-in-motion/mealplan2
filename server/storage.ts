@@ -180,6 +180,8 @@ export class DatabaseStorage implements IStorage {
       prepTime: req.prepTime,
       imageUrl: req.imageUrl,
       isFavorite: req.isFavorite ?? false,
+      suggestedRecipeIds: req.suggestedRecipeIds || [],
+      suggestedRecipes: (req as any).suggestedRecipes || ((req.suggestedRecipeIds || []).map((recipeId: number) => ({ recipeId, servings: 1 }))),
       servings: req.servings || 1,
     }).returning();
 
@@ -231,6 +233,8 @@ export class DatabaseStorage implements IStorage {
         prepTime: req.prepTime,
         imageUrl: req.imageUrl,
         isFavorite: req.isFavorite,
+        suggestedRecipeIds: req.suggestedRecipeIds || [],
+        suggestedRecipes: (req as any).suggestedRecipes || ((req.suggestedRecipeIds || []).map((recipeId: number) => ({ recipeId, servings: 1 }))),
         servings: req.servings || 1,
       })
       .where(eq(recipes.id, id));
