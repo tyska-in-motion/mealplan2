@@ -44,6 +44,11 @@ const instructionStepSchema = z.object({
   segments: z.array(instructionSegmentSchema),
 });
 
+const suggestedRecipeInputSchema = z.object({
+  recipeId: z.number(),
+  servings: z.number().min(0.1),
+});
+
 
 function resolveIngredientForScaling(entry: any, ingredientRow: any, occurrenceTracker?: Map<number, number>) {
   const ingredientId = Number(ingredientRow?.ingredientId);
@@ -253,6 +258,8 @@ export async function registerRoutes(
         imageUrl: z.string().optional(),
         isFavorite: z.boolean().optional().default(false),
         servings: z.number().min(0.1).default(1),
+        suggestedRecipeIds: z.array(z.number()).optional().default([]),
+        suggestedRecipes: z.array(suggestedRecipeInputSchema).optional().default([]),
         ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),
@@ -290,6 +297,8 @@ export async function registerRoutes(
         imageUrl: z.string().optional(),
         isFavorite: z.boolean().optional(),
         servings: z.number().min(0.1).optional(),
+        suggestedRecipeIds: z.array(z.number()).optional().default([]),
+        suggestedRecipes: z.array(suggestedRecipeInputSchema).optional().default([]),
         ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),
