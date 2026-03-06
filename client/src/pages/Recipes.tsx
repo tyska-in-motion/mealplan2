@@ -219,7 +219,7 @@ export default function Recipes() {
   const [addForBothPeople, setAddForBothPeople] = useState(true);
   const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<string, number>>>({ A: {}, B: {} });
   const [selectedRecipeServings, setSelectedRecipeServings] = useState(1);
-  const [selectedSuggestedRecipes, setSelectedSuggestedRecipes] = useState<Record<string, number>>({});
+  const [selectedSuggestedRecipes, setSelectedSuggestedRecipes] = useState<Record<string, boolean>>({});
   const personName: Record<"A" | "B", string> = { A: "Tysia", B: "Mati" };
 
   const getAddonSelectionKey = (addon: any, index: number) => String(addon?.id ?? `${addon?.ingredientId}-${index}`);
@@ -244,7 +244,7 @@ export default function Recipes() {
   const { mutateAsync: addEntry, isPending: isAddingToPlan } = useAddMealEntry();
 
   const suggestedRecipeOptionsForPlan = useMemo(() => {
-    if (!recipeToPlan) return [] as { recipe: any; servings: number }[];
+    if (!recipeToPlan) return [] as any[];
 
     const structured = (recipeToPlan?.suggestedRecipes || [])
       .map((item: any) => ({ recipeId: Number(item?.recipeId), servings: Number(item?.servings) || 1 }))
@@ -257,11 +257,8 @@ export default function Recipes() {
     const entries = structured.length > 0 ? structured : legacy;
 
     return entries
-      .map((entry: any) => ({
-        recipe: (recipes || []).find((candidate: any) => Number(candidate?.id) === Number(entry.recipeId)),
-        servings: entry.servings,
-      }))
-      .filter((entry: any) => !!entry.recipe);
+      .map((entry: any) => (recipes || []).find((candidate: any) => Number(candidate?.id) === Number(entry.recipeId)))
+      .filter((entry: any) => !!entry);
   }, [recipeToPlan, recipes]);
 
   const handleAddToPlan = async () => {
@@ -336,10 +333,10 @@ export default function Recipes() {
         }
 
         const selectedSuggestions = suggestedRecipeOptionsForPlan
-          .filter((entry: any) => Number(selectedSuggestedRecipes[String(entry.recipe.id)] || 0) > 0)
+          .filter((entry: any) => !!selectedSuggestedRecipes[String(entry.id)])
           .map((entry: any) => ({
-            recipeId: Number(entry.recipe.id),
-            servings: Number(selectedSuggestedRecipes[String(entry.recipe.id)] || 0),
+            recipeId: Number(entry.id),
+            servings: 1,
           }));
 
         for (const suggestion of selectedSuggestions) {
@@ -623,8 +620,8 @@ export default function Recipes() {
       ...data,
       instructionSteps,
       suggestedRecipes: (data.suggestedRecipes || [])
-        .map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) }))
-        .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0 && Number.isFinite(item.servings) && item.servings > 0),
+        .map((item: any) => ({ recipeId: Number(item.recipeId), servings: 1 }))
+        .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0),
       suggestedRecipeIds: (data.suggestedRecipes || []).map((item: any) => Number(item.recipeId)).filter((id: number) => Number.isFinite(id) && id > 0),
       ingredients: (data.ingredients || []).map((ingredient: any) => ({
         ...ingredient,
@@ -1172,7 +1169,7 @@ export default function Recipes() {
                             type="checkbox"
                             checked={selected}
                             onChange={(e) => {
-                              const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }));
+                              const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({ recipeId: Number(item.recipeId), servings: 1 }));
                               const next = e.target.checked
                                 ? [...existing.filter((item: any) => Number(item.recipeId) !== Number(candidate.id)), { recipeId: Number(candidate.id), servings: 1 }]
                                 : existing.filter((item: any) => Number(item.recipeId) !== Number(candidate.id));
@@ -1180,20 +1177,7 @@ export default function Recipes() {
                             }}
                           />
                           <span className="flex-1">{candidate.name}</span>
-                          <Input
-                            type="number"
-                            step="0.25"
-                            min="0.25"
-                            className="w-24 h-8"
-                            disabled={!selected}
-                            value={selectedItem?.servings ?? 1}
-                            onChange={(e) => {
-                              const nextServings = Math.max(0.25, Number(e.target.value) || 1);
-                              const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }));
-                              const next = existing.map((item: any) => Number(item.recipeId) === Number(candidate.id) ? { ...item, servings: nextServings } : item);
-                              form.setValue("suggestedRecipes", next, { shouldDirty: true });
-                            }}
-                          />
+
                         </div>
                       );
                     })}
@@ -1478,12 +1462,17 @@ export default function Recipes() {
           setAddForBothPeople(true);
           setSelectedPerson("A");
           setSelectedRecipeServings(Number(servingsOverride) > 0 ? Number(servingsOverride) : 1);
-          const initialSuggestions = ((recipe?.suggestedRecipes || []) as any[]).reduce((acc: Record<string, number>, item: any) => {
+          const initialSuggestions = ((recipe?.suggestedRecipes || []) as any[]).reduce((acc: Record<string, boolean>, item: any) => {
             const recipeId = Number(item?.recipeId);
-            const servings = Number(item?.servings) || 0;
-            if (Number.isFinite(recipeId) && recipeId > 0 && servings > 0) acc[String(recipeId)] = servings;
+            if (Number.isFinite(recipeId) && recipeId > 0) acc[String(recipeId)] = true;
             return acc;
           }, {});
+          if (Object.keys(initialSuggestions).length === 0) {
+            ((recipe?.suggestedRecipeIds || []) as any[]).forEach((id: any) => {
+              const recipeId = Number(id);
+              if (Number.isFinite(recipeId) && recipeId > 0) initialSuggestions[String(recipeId)] = true;
+            });
+          }
           setSelectedSuggestedRecipes(initialSuggestions);
           setIsAddToPlanOpen(true);
         }}
@@ -1540,7 +1529,7 @@ export default function Recipes() {
             </div>
             <div className="grid gap-2">
               <label className="text-sm font-medium">Liczba porcji przepisu</label>
-              <Input type="number" step="0.25" min="0.25" value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.25, Number(e.target.value) || 1))} />
+              <Input type="number" step="any" min="0.25" value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.25, Number(e.target.value) || 1))} />
             </div>
 
             {suggestedRecipeOptionsForPlan.length > 0 && (
@@ -1548,36 +1537,22 @@ export default function Recipes() {
                 <label className="text-sm font-medium">A może dodać też?</label>
                 <div className="space-y-2 rounded-xl border border-border/60 bg-secondary/20 p-3">
                   {suggestedRecipeOptionsForPlan.map((entry: any) => {
-                    const key = String(entry.recipe.id);
-                    const amount = Number(selectedSuggestedRecipes[key] ?? 0);
+                    const key = String(entry.id);
+                    const selected = !!selectedSuggestedRecipes[key];
                     return (
-                      <div key={entry.recipe.id} className="flex items-center gap-2">
-                        <label className="flex items-center gap-2 text-sm flex-1">
-                          <input
-                            type="checkbox"
-                            checked={amount > 0}
-                            onChange={(e) => {
-                              setSelectedSuggestedRecipes((prev) => ({
-                                ...prev,
-                                [key]: e.target.checked ? (amount > 0 ? amount : Number(entry.servings) || 1) : 0,
-                              }));
-                            }}
-                          />
-                          <span>{entry.recipe.name}</span>
-                        </label>
-                        <Input
-                          type="number"
-                          step="0.25"
-                          min="0.25"
-                          className="h-8 w-24"
-                          disabled={amount <= 0}
-                          value={amount > 0 ? amount : Number(entry.servings) || 1}
+                      <label key={entry.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selected}
                           onChange={(e) => {
-                            const nextAmount = Math.max(0.25, Number(e.target.value) || Number(entry.servings) || 1);
-                            setSelectedSuggestedRecipes((prev) => ({ ...prev, [key]: nextAmount }));
+                            setSelectedSuggestedRecipes((prev) => ({
+                              ...prev,
+                              [key]: e.target.checked,
+                            }));
                           }}
                         />
-                      </div>
+                        <span>{entry.name}</span>
+                      </label>
                     );
                   })}
                 </div>
