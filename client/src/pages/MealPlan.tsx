@@ -923,7 +923,7 @@ export default function MealPlan() {
 
                 <div className="grid gap-2">
                   <label className="text-xs font-medium text-muted-foreground">Porcje głównego przepisu</label>
-                  <Input type="number" step="0.25" min={0.1} value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.1, Number(e.target.value) || 1))} className="h-8 w-28" />
+                  <Input type="number" step="0.25" min={0.25} value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.25, Number(e.target.value) || 1))} className="h-8 w-28" />
                 </div>
 
                 {suggestedRecipeOptionsForAdd.length > 0 && (
@@ -949,12 +949,12 @@ export default function MealPlan() {
                             <Input
                               type="number"
                               step="0.25"
-                              min={0.1}
+                              min={0.25}
                               className="h-8 w-24"
                               disabled={amount <= 0}
                               value={amount > 0 ? amount : Number(item.servings) || 1}
                               onChange={(e) => {
-                                const nextAmount = Math.max(0.1, Number(e.target.value) || Number(item.servings) || 1);
+                                const nextAmount = Math.max(0.25, Number(e.target.value) || Number(item.servings) || 1);
                                 setSelectedSuggestedRecipes((prev) => ({ ...prev, [key]: nextAmount }));
                               }}
                             />

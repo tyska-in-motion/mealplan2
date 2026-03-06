@@ -721,55 +721,9 @@ export default function Recipes() {
                 
                 <div>
                   <label className="text-sm font-medium mb-1 block">Liczba porcji</label>
-                  <Input type="number" step="0.1" {...form.register("servings")} min="0.1" />
+                  <Input type="number" step="0.1" {...form.register("servings")} min="0.25" />
                 </div>
 
-                <div className="col-span-2">
-                  <label className="text-sm font-medium mb-1 block">Sugerowane dodatki (inne przepisy + porcje)</label>
-                  <div className="max-h-52 overflow-y-auto rounded-md border p-2 space-y-2">
-                    {(recipes || [])
-                      .filter((candidate: any) => Number(candidate.id) !== Number(editingRecipe?.id || 0))
-                      .map((candidate: any) => {
-                        const current = form.watch("suggestedRecipes") || [];
-                        const selectedItem = current.find((item: any) => Number(item.recipeId) === Number(candidate.id));
-                        const selected = !!selectedItem;
-                        return (
-                          <div key={candidate.id} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              onChange={(e) => {
-                                const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }));
-                                const next = e.target.checked
-                                  ? [...existing.filter((item: any) => Number(item.recipeId) !== Number(candidate.id)), { recipeId: Number(candidate.id), servings: 1 }]
-                                  : existing.filter((item: any) => Number(item.recipeId) !== Number(candidate.id));
-                                form.setValue("suggestedRecipes", next, { shouldDirty: true });
-                              }}
-                            />
-                            <span className="flex-1">{candidate.name}</span>
-                            <Input
-                              type="number"
-                              step="0.25"
-                              min="0.1"
-                              className="w-24 h-8"
-                              disabled={!selected}
-                              value={selectedItem?.servings ?? 1}
-                              onChange={(e) => {
-                                const nextServings = Math.max(0.1, Number(e.target.value) || 1);
-                                const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }));
-                                const next = existing.map((item: any) => Number(item.recipeId) === Number(candidate.id) ? { ...item, servings: nextServings } : item);
-                                form.setValue("suggestedRecipes", next, { shouldDirty: true });
-                              }}
-                            />
-                          </div>
-                        );
-                      })}
-                    {(recipes || []).filter((candidate: any) => Number(candidate.id) !== Number(editingRecipe?.id || 0)).length === 0 && (
-                      <p className="text-xs text-muted-foreground">Brak innych przepisów do powiązania.</p>
-                    )}
-                  </div>
-                </div>
-                
                 <div className="col-span-2">
                   <label className="text-sm font-medium mb-1 block">Zdjęcie przepisu</label>
                   <div className="flex gap-2 items-center">
@@ -1202,6 +1156,53 @@ export default function Recipes() {
                 </div>
               </div>
 
+
+              <details className="rounded-xl border border-border/70 bg-secondary/20 p-3">
+                <summary className="cursor-pointer text-sm font-medium">Sugerowane przepisy (opcjonalnie)</summary>
+                <div className="mt-3 max-h-52 overflow-y-auto rounded-md border bg-white p-2 space-y-2">
+                  {(recipes || [])
+                    .filter((candidate: any) => Number(candidate.id) !== Number(editingRecipe?.id || 0))
+                    .map((candidate: any) => {
+                      const current = form.watch("suggestedRecipes") || [];
+                      const selectedItem = current.find((item: any) => Number(item.recipeId) === Number(candidate.id));
+                      const selected = !!selectedItem;
+                      return (
+                        <div key={candidate.id} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }));
+                              const next = e.target.checked
+                                ? [...existing.filter((item: any) => Number(item.recipeId) !== Number(candidate.id)), { recipeId: Number(candidate.id), servings: 1 }]
+                                : existing.filter((item: any) => Number(item.recipeId) !== Number(candidate.id));
+                              form.setValue("suggestedRecipes", next, { shouldDirty: true });
+                            }}
+                          />
+                          <span className="flex-1">{candidate.name}</span>
+                          <Input
+                            type="number"
+                            step="0.25"
+                            min="0.25"
+                            className="w-24 h-8"
+                            disabled={!selected}
+                            value={selectedItem?.servings ?? 1}
+                            onChange={(e) => {
+                              const nextServings = Math.max(0.25, Number(e.target.value) || 1);
+                              const existing = (form.getValues("suggestedRecipes") || []).map((item: any) => ({ recipeId: Number(item.recipeId), servings: Number(item.servings) || 1 }));
+                              const next = existing.map((item: any) => Number(item.recipeId) === Number(candidate.id) ? { ...item, servings: nextServings } : item);
+                              form.setValue("suggestedRecipes", next, { shouldDirty: true });
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  {(recipes || []).filter((candidate: any) => Number(candidate.id) !== Number(editingRecipe?.id || 0)).length === 0 && (
+                    <p className="text-xs text-muted-foreground">Brak innych przepisów do powiązania.</p>
+                  )}
+                </div>
+              </details>
+
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 sm:pt-4">
                 <Button type="button" variant="ghost" onClick={closeDialog}>Anuluj</Button>
                 <Button type="submit" disabled={isCreating || isUpdating}>
@@ -1539,7 +1540,7 @@ export default function Recipes() {
             </div>
             <div className="grid gap-2">
               <label className="text-sm font-medium">Liczba porcji przepisu</label>
-              <Input type="number" step="0.25" min="0.1" value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.1, Number(e.target.value) || 1))} />
+              <Input type="number" step="0.25" min="0.25" value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.25, Number(e.target.value) || 1))} />
             </div>
 
             {suggestedRecipeOptionsForPlan.length > 0 && (
@@ -1567,12 +1568,12 @@ export default function Recipes() {
                         <Input
                           type="number"
                           step="0.25"
-                          min="0.1"
+                          min="0.25"
                           className="h-8 w-24"
                           disabled={amount <= 0}
                           value={amount > 0 ? amount : Number(entry.servings) || 1}
                           onChange={(e) => {
-                            const nextAmount = Math.max(0.1, Number(e.target.value) || Number(entry.servings) || 1);
+                            const nextAmount = Math.max(0.25, Number(e.target.value) || Number(entry.servings) || 1);
                             setSelectedSuggestedRecipes((prev) => ({ ...prev, [key]: nextAmount }));
                           }}
                         />
