@@ -718,7 +718,7 @@ export default function Recipes() {
                 
                 <div>
                   <label className="text-sm font-medium mb-1 block">Liczba porcji</label>
-                  <Input type="number" step="0.1" {...form.register("servings")} min="0.25" />
+                  <Input type="number" step="0.1" {...form.register("servings")} min="0.1" />
                 </div>
 
                 <div className="col-span-2">
