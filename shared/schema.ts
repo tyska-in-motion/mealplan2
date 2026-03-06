@@ -1,6 +1,6 @@
 
 import { pgTable, text, serial, integer, boolean, timestamp, real, date, jsonb, pgEnum } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -10,6 +10,11 @@ export type InstructionSegment =
 
 export type InstructionStep = {
   segments: InstructionSegment[];
+};
+
+export type SuggestedRecipe = {
+  recipeId: number;
+  servings: number;
 };
 
 // === TABLE DEFINITIONS ===
@@ -42,6 +47,8 @@ export const recipes = pgTable("recipes", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   isFavorite: boolean("is_favorite").notNull().default(false),
+  suggestedRecipeIds: integer("suggested_recipe_ids").array().notNull().default(sql`'{}'::integer[]`),
+  suggestedRecipes: jsonb("suggested_recipes").$type<SuggestedRecipe[]>().notNull().default(sql`'[]'::jsonb`),
   tags: text("tags").array(), // e.g. ["szybkie", "śniadanie"]
   description: text("description"),
   instructions: text("instructions"),
