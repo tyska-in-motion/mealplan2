@@ -57,6 +57,11 @@ const instructionStepSchema = z.object({
   segments: z.array(instructionSegmentSchema),
 });
 
+const suggestedRecipeInputSchema = z.object({
+  recipeId: z.number(),
+  servings: z.number().min(0.1),
+});
+
 export const api = {
   ingredients: {
     list: {
@@ -123,6 +128,8 @@ export const api = {
       input: insertRecipeSchema.extend({
         instructionSteps: z.array(instructionStepSchema).optional(),
         servings: z.number().min(0.1).default(1),
+        suggestedRecipeIds: z.array(z.number()).optional().default([]),
+        suggestedRecipes: z.array(suggestedRecipeInputSchema).optional().default([]),
         ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),
@@ -163,6 +170,8 @@ export const api = {
       input: insertRecipeSchema.extend({
         instructionSteps: z.array(instructionStepSchema).optional(),
         servings: z.number().min(0.1).optional(),
+        suggestedRecipeIds: z.array(z.number()).optional().default([]),
+        suggestedRecipes: z.array(suggestedRecipeInputSchema).optional().default([]),
         ingredients: z.array(recipeIngredientInputSchema),
         frequentAddons: z.array(z.object({
           ingredientId: z.number(),

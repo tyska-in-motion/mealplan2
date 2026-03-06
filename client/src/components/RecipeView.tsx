@@ -18,7 +18,8 @@ interface RecipeViewProps {
   recipe: any;
   isOpen: boolean;
   onClose: () => void;
-  onAddToPlan: (recipe: any) => void;
+  onAddToPlan: (recipe: any, servingsOverride?: number) => void;
+  allRecipes?: any[];
   plannedServings?: number;
   onEditIngredients?: () => void;
   onPlannedServingsChange?: (servings: number) => void;
@@ -35,6 +36,7 @@ export function RecipeView({
   isOpen, 
   onClose, 
   onAddToPlan, 
+  allRecipes = [],
   plannedServings, 
   onEditIngredients,
   onPlannedServingsChange,
@@ -103,6 +105,25 @@ export function RecipeView({
       return { ri, isFrequentAddon, scalingIngredient };
     });
   }, [baseIngredients, frequentAddonSet, recipeIngredientCounts, recipe?.ingredients, recipe?.frequentAddons]);
+
+  const suggestedRecipes = useMemo(() => {
+    const structured = ((recipe?.suggestedRecipes || []) as any[])
+      .map((item: any) => ({ recipeId: Number(item?.recipeId), servings: Number(item?.servings) || 1 }))
+      .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0);
+
+    const legacy = (recipe?.suggestedRecipeIds || [])
+      .map((id: any) => ({ recipeId: Number(id), servings: 1 }))
+      .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0);
+
+    const candidates = structured.length > 0 ? structured : legacy;
+
+    return candidates
+      .map((item: any) => ({
+        recipe: (allRecipes || []).find((candidate: any) => Number(candidate?.id) === Number(item.recipeId)),
+        servings: item.servings,
+      }))
+      .filter((entry: any) => !!entry.recipe);
+  }, [recipe?.suggestedRecipes, recipe?.suggestedRecipeIds, allRecipes]);
 
   const currentStep = instructionSteps[currentStepIndex];
   const currentStepText = (currentStep?.segments || []).map((segment: any) => segment.text).join("") || "";
@@ -518,6 +539,25 @@ export function RecipeView({
               )}
             </div>
           </div>
+
+          {suggestedRecipes.length > 0 && (
+            <div>
+              <h3 className="text-lg font-bold mb-3">Sugerowane dodatki (inne przepisy)</h3>
+              <div className="flex flex-wrap gap-2">
+                {suggestedRecipes.map((suggestion: any) => (
+                  <Button
+                    key={suggestion.recipe.id}
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => onAddToPlan(suggestion.recipe, suggestion.servings)}
+                  >
+                    <CalendarPlus className="w-3 h-3 mr-1" />
+                    {suggestion.recipe.name} ({formatAmount(suggestion.servings)} por.)
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
           {showFooter && (
             <DialogFooter>
               <Button 

@@ -71,6 +71,19 @@ export async function ensureDbCompat() {
   // Backward-compatible self-healing for recipe favorites migration
   await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS is_favorite boolean DEFAULT false`);
   await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS instruction_steps jsonb`);
+  await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS suggested_recipe_ids integer[] DEFAULT '{}'::integer[]`);
+  await pool.query(`UPDATE recipes SET suggested_recipe_ids = '{}'::integer[] WHERE suggested_recipe_ids IS NULL`);
+  await pool.query(`ALTER TABLE recipes ALTER COLUMN suggested_recipe_ids SET NOT NULL`);
+  await pool.query(`ALTER TABLE recipes ALTER COLUMN suggested_recipe_ids SET DEFAULT '{}'::integer[]`);
+  await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS suggested_recipes jsonb DEFAULT '[]'::jsonb`);
+  await pool.query(`UPDATE recipes SET suggested_recipes = '[]'::jsonb WHERE suggested_recipes IS NULL`);
+  await pool.query(`UPDATE recipes SET suggested_recipes = COALESCE((
+    SELECT jsonb_agg(jsonb_build_object('recipeId', rid, 'servings', 1))
+    FROM unnest(suggested_recipe_ids) AS rid
+  ), '[]'::jsonb)
+  WHERE (suggested_recipes = '[]'::jsonb OR suggested_recipes IS NULL) AND array_length(suggested_recipe_ids, 1) > 0`);
+  await pool.query(`ALTER TABLE recipes ALTER COLUMN suggested_recipes SET NOT NULL`);
+  await pool.query(`ALTER TABLE recipes ALTER COLUMN suggested_recipes SET DEFAULT '[]'::jsonb`);
   await pool.query(`UPDATE recipes SET is_favorite = false WHERE is_favorite IS NULL`);
   await pool.query(`ALTER TABLE recipes ALTER COLUMN is_favorite SET NOT NULL`);
   await pool.query(`ALTER TABLE recipes ALTER COLUMN is_favorite SET DEFAULT false`);

@@ -91,6 +91,8 @@ export default function MealPlan() {
   const [selectedRecipeToAdd, setSelectedRecipeToAdd] = useState<any>(null);
   const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<number, number>>>({ A: {}, B: {} });
   const [addRecipeForBothPeople, setAddRecipeForBothPeople] = useState(false);
+  const [selectedRecipeServings, setSelectedRecipeServings] = useState(1);
+  const [selectedSuggestedRecipes, setSelectedSuggestedRecipes] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   
@@ -303,6 +305,8 @@ export default function MealPlan() {
     setSelectedRecipeToAdd(null);
     setSelectedFrequentAddons({ A: {}, B: {} });
     setAddRecipeForBothPeople(false);
+    setSelectedRecipeServings(1);
+    setSelectedSuggestedRecipes({});
     setIsAddOpen(true);
   };
 
@@ -330,6 +334,8 @@ export default function MealPlan() {
     setSelectedRecipeToAdd(null);
     setSelectedFrequentAddons({ A: {}, B: {} });
     setAddRecipeForBothPeople(false);
+    setSelectedRecipeServings(1);
+    setSelectedSuggestedRecipes({});
   };
 
   const getSelectedAddonsForPerson = (recipe: any, person: "A" | "B") => {
@@ -341,6 +347,26 @@ export default function MealPlan() {
       .filter((addon: any) => addon.amount > 0);
   };
 
+  const suggestedRecipeOptionsForAdd = useMemo(() => {
+    if (!selectedRecipeToAdd) return [] as { recipe: any; servings: number }[];
+
+    const structured = (selectedRecipeToAdd?.suggestedRecipes || [])
+      .map((item: any) => ({ recipeId: Number(item?.recipeId), servings: Number(item?.servings) || 1 }))
+      .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0);
+
+    const legacy = (selectedRecipeToAdd?.suggestedRecipeIds || [])
+      .map((id: any) => ({ recipeId: Number(id), servings: 1 }))
+      .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0);
+
+    const entries = structured.length > 0 ? structured : legacy;
+    return entries
+      .map((entry: any) => ({
+        recipe: (recipes || []).find((candidate: any) => Number(candidate?.id) === Number(entry.recipeId)),
+        servings: entry.servings,
+      }))
+      .filter((entry: any) => !!entry.recipe);
+  }, [selectedRecipeToAdd, recipes]);
+
   const handleAdd = (recipeId: number, recipe?: any) => {
     if (!selectedMealType || !selectedDateStr) return;
 
@@ -350,11 +376,27 @@ export default function MealPlan() {
       mealType: selectedMealType,
       person,
       isEaten: false,
+      servings: selectedRecipeServings,
     }, {
-      onSuccess: (entry) => {
+      onSuccess: async (entry) => {
         const selectedAddons = getSelectedAddonsForPerson(recipe, person);
 
         if (!recipe || selectedAddons.length === 0) {
+          const selectedSuggestions = suggestedRecipeOptionsForAdd
+            .filter((item: any) => Number(selectedSuggestedRecipes[String(item.recipe.id)] || 0) > 0)
+            .map((item: any) => ({ recipeId: Number(item.recipe.id), servings: Number(selectedSuggestedRecipes[String(item.recipe.id)] || 0) }));
+          for (const suggestion of selectedSuggestions) {
+            await new Promise<void>((resolve) => {
+              addEntry({
+                date: selectedDateStr,
+                recipeId: suggestion.recipeId,
+                mealType: selectedMealType,
+                person,
+                isEaten: false,
+                servings: suggestion.servings,
+              }, { onSuccess: () => resolve(), onError: () => resolve() });
+            });
+          }
           onSuccess?.();
           return;
         }
@@ -375,10 +417,27 @@ export default function MealPlan() {
           id: entry.id,
           updates: {
             ingredients: mergedIngredients,
-            servings: 1,
+            servings: selectedRecipeServings,
           },
         }, {
-          onSuccess,
+          onSuccess: async () => {
+            const selectedSuggestions = suggestedRecipeOptionsForAdd
+              .filter((item: any) => Number(selectedSuggestedRecipes[String(item.recipe.id)] || 0) > 0)
+              .map((item: any) => ({ recipeId: Number(item.recipe.id), servings: Number(selectedSuggestedRecipes[String(item.recipe.id)] || 0) }));
+            for (const suggestion of selectedSuggestions) {
+              await new Promise<void>((resolve) => {
+                addEntry({
+                  date: selectedDateStr,
+                  recipeId: suggestion.recipeId,
+                  mealType: selectedMealType,
+                  person,
+                  isEaten: false,
+                  servings: suggestion.servings,
+                }, { onSuccess: () => resolve(), onError: () => resolve() });
+              });
+            }
+            onSuccess?.();
+          },
         });
       }
     });
@@ -826,6 +885,14 @@ export default function MealPlan() {
                       setSelectedRecipeToAdd(recipe);
                       setSelectedFrequentAddons({ A: {}, B: {} });
                       setAddRecipeForBothPeople(false);
+                      setSelectedRecipeServings(1);
+                      const initialSuggestions = ((recipe?.suggestedRecipes || []) as any[]).reduce((acc: Record<string, number>, item: any) => {
+                        const recipeId = Number(item?.recipeId);
+                        const servings = Number(item?.servings) || 0;
+                        if (Number.isFinite(recipeId) && recipeId > 0 && servings > 0) acc[String(recipeId)] = servings;
+                        return acc;
+                      }, {});
+                      setSelectedSuggestedRecipes(initialSuggestions);
                     }}
                     className="flex items-center gap-2 sm:gap-4 p-2.5 sm:p-3 rounded-xl hover:bg-secondary transition-colors text-left border border-transparent hover:border-border"
                   >
@@ -853,6 +920,50 @@ export default function MealPlan() {
             {selectedRecipeToAdd && (
               <div className="space-y-3 rounded-xl border border-border/70 bg-secondary/20 p-3">
                 <p className="text-sm font-semibold">Wybrany przepis: {selectedRecipeToAdd.name}</p>
+
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">Porcje głównego przepisu</label>
+                  <Input type="number" step="0.25" min={0.25} value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.25, Number(e.target.value) || 1))} className="h-8 w-28" />
+                </div>
+
+                {suggestedRecipeOptionsForAdd.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">A może chcesz dodać też ten przepis?</p>
+                    <div className="space-y-2 rounded-xl border border-border/60 bg-white p-2">
+                      {suggestedRecipeOptionsForAdd.map((item: any) => {
+                        const key = String(item.recipe.id);
+                        const amount = Number(selectedSuggestedRecipes[key] ?? 0);
+                        return (
+                          <div key={item.recipe.id} className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 text-sm flex-1">
+                              <input
+                                type="checkbox"
+                                checked={amount > 0}
+                                onChange={(e) => setSelectedSuggestedRecipes((prev) => ({
+                                  ...prev,
+                                  [key]: e.target.checked ? (amount > 0 ? amount : Number(item.servings) || 1) : 0,
+                                }))}
+                              />
+                              <span>{item.recipe.name}</span>
+                            </label>
+                            <Input
+                              type="number"
+                              step="0.25"
+                              min={0.25}
+                              className="h-8 w-24"
+                              disabled={amount <= 0}
+                              value={amount > 0 ? amount : Number(item.servings) || 1}
+                              onChange={(e) => {
+                                const nextAmount = Math.max(0.25, Number(e.target.value) || Number(item.servings) || 1);
+                                setSelectedSuggestedRecipes((prev) => ({ ...prev, [key]: nextAmount }));
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {(selectedRecipeToAdd.frequentAddons || []).length > 0 && (
                   <div className="space-y-3">
