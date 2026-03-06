@@ -1540,7 +1540,7 @@ export default function Recipes() {
             </div>
             <div className="grid gap-2">
               <label className="text-sm font-medium">Liczba porcji przepisu</label>
-              <Input type="number" step="0.25" min="0.25" value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.25, Number(e.target.value) || 1))} />
+              <Input type="number" step="any" min="0.25" value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.25, Number(e.target.value) || 1))} />
             </div>
 
             {suggestedRecipeOptionsForPlan.length > 0 && (
@@ -1567,7 +1567,7 @@ export default function Recipes() {
                         </label>
                         <Input
                           type="number"
-                          step="0.25"
+                          step="any"
                           min="0.25"
                           className="h-8 w-24"
                           disabled={amount <= 0}
