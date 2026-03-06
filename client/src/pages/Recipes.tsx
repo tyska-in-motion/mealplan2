@@ -219,6 +219,7 @@ export default function Recipes() {
   const [addForBothPeople, setAddForBothPeople] = useState(true);
   const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<string, number>>>({ A: {}, B: {} });
   const [selectedRecipeServings, setSelectedRecipeServings] = useState(1);
+  const [selectedSuggestedRecipes, setSelectedSuggestedRecipes] = useState<Record<string, number>>({});
   const personName: Record<"A" | "B", string> = { A: "Tysia", B: "Mati" };
 
   const getAddonSelectionKey = (addon: any, index: number) => String(addon?.id ?? `${addon?.ingredientId}-${index}`);
@@ -241,6 +242,27 @@ export default function Recipes() {
 
   const { data: dayPlan } = useDayPlan(selectedDate);
   const { mutateAsync: addEntry, isPending: isAddingToPlan } = useAddMealEntry();
+
+  const suggestedRecipeOptionsForPlan = useMemo(() => {
+    if (!recipeToPlan) return [] as { recipe: any; servings: number }[];
+
+    const structured = (recipeToPlan?.suggestedRecipes || [])
+      .map((item: any) => ({ recipeId: Number(item?.recipeId), servings: Number(item?.servings) || 1 }))
+      .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0);
+
+    const legacy = (recipeToPlan?.suggestedRecipeIds || [])
+      .map((id: any) => ({ recipeId: Number(id), servings: 1 }))
+      .filter((item: any) => Number.isFinite(item.recipeId) && item.recipeId > 0);
+
+    const entries = structured.length > 0 ? structured : legacy;
+
+    return entries
+      .map((entry: any) => ({
+        recipe: (recipes || []).find((candidate: any) => Number(candidate?.id) === Number(entry.recipeId)),
+        servings: entry.servings,
+      }))
+      .filter((entry: any) => !!entry.recipe);
+  }, [recipeToPlan, recipes]);
 
   const handleAddToPlan = async () => {
     if (!recipeToPlan) return;
@@ -312,6 +334,24 @@ export default function Recipes() {
             },
           });
         }
+
+        const selectedSuggestions = suggestedRecipeOptionsForPlan
+          .filter((entry: any) => Number(selectedSuggestedRecipes[String(entry.recipe.id)] || 0) > 0)
+          .map((entry: any) => ({
+            recipeId: Number(entry.recipe.id),
+            servings: Number(selectedSuggestedRecipes[String(entry.recipe.id)] || 0),
+          }));
+
+        for (const suggestion of selectedSuggestions) {
+          await addEntry({
+            date: selectedDate,
+            mealType: selectedMealType,
+            recipeId: suggestion.recipeId,
+            person,
+            isEaten: false,
+            servings: suggestion.servings,
+          });
+        }
       }
 
       setIsAddToPlanOpen(false);
@@ -319,6 +359,7 @@ export default function Recipes() {
       setSelectedFrequentAddons({ A: {}, B: {} });
       setAddForBothPeople(true);
       setSelectedRecipeServings(1);
+      setSelectedSuggestedRecipes({});
       toast({ title: "Sukces", description: addForBothPeople ? "Przepis dodany do planu dla Tysi i Matiego." : `Przepis dodany do planu dla ${personName[selectedPerson]}.` });
     } catch (err: any) {
       toast({ variant: "destructive", title: "Błąd", description: err?.message || "Nie udało się dodać przepisu." });
@@ -1287,6 +1328,7 @@ export default function Recipes() {
                     setAddForBothPeople(true);
                     setSelectedPerson("A");
                     setSelectedRecipeServings(1);
+            setSelectedSuggestedRecipes({});
           setIsAddToPlanOpen(true);
                   }}
                   className="bg-white/80 p-2 rounded-full text-primary hover:bg-white transition-colors"
@@ -1435,6 +1477,13 @@ export default function Recipes() {
           setAddForBothPeople(true);
           setSelectedPerson("A");
           setSelectedRecipeServings(Number(servingsOverride) > 0 ? Number(servingsOverride) : 1);
+          const initialSuggestions = ((recipe?.suggestedRecipes || []) as any[]).reduce((acc: Record<string, number>, item: any) => {
+            const recipeId = Number(item?.recipeId);
+            const servings = Number(item?.servings) || 0;
+            if (Number.isFinite(recipeId) && recipeId > 0 && servings > 0) acc[String(recipeId)] = servings;
+            return acc;
+          }, {});
+          setSelectedSuggestedRecipes(initialSuggestions);
           setIsAddToPlanOpen(true);
         }}
         availableIngredientIds={effectiveAvailableIngredientIds}
@@ -1450,6 +1499,7 @@ export default function Recipes() {
             setAddForBothPeople(true);
             setSelectedPerson("A");
             setSelectedRecipeServings(1);
+            setSelectedSuggestedRecipes({});
           }
         }}
       >
@@ -1491,6 +1541,47 @@ export default function Recipes() {
               <label className="text-sm font-medium">Liczba porcji przepisu</label>
               <Input type="number" step="0.25" min="0.1" value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.1, Number(e.target.value) || 1))} />
             </div>
+
+            {suggestedRecipeOptionsForPlan.length > 0 && (
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">A może dodać też?</label>
+                <div className="space-y-2 rounded-xl border border-border/60 bg-secondary/20 p-3">
+                  {suggestedRecipeOptionsForPlan.map((entry: any) => {
+                    const key = String(entry.recipe.id);
+                    const amount = Number(selectedSuggestedRecipes[key] ?? 0);
+                    return (
+                      <div key={entry.recipe.id} className="flex items-center gap-2">
+                        <label className="flex items-center gap-2 text-sm flex-1">
+                          <input
+                            type="checkbox"
+                            checked={amount > 0}
+                            onChange={(e) => {
+                              setSelectedSuggestedRecipes((prev) => ({
+                                ...prev,
+                                [key]: e.target.checked ? (amount > 0 ? amount : Number(entry.servings) || 1) : 0,
+                              }));
+                            }}
+                          />
+                          <span>{entry.recipe.name}</span>
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.25"
+                          min="0.1"
+                          className="h-8 w-24"
+                          disabled={amount <= 0}
+                          value={amount > 0 ? amount : Number(entry.servings) || 1}
+                          onChange={(e) => {
+                            const nextAmount = Math.max(0.1, Number(e.target.value) || Number(entry.servings) || 1);
+                            setSelectedSuggestedRecipes((prev) => ({ ...prev, [key]: nextAmount }));
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="grid gap-2">
               <label className="text-sm font-medium">Dla kogo</label>
               <Select value={selectedPerson} onValueChange={(value) => setSelectedPerson(value as "A" | "B")}>
