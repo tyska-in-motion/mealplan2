@@ -1498,6 +1498,8 @@ export default function Recipes() {
                 </div>
                 {(() => {
                   const nutrition = getRecipeCaloriesPerServing(recipe);
+                  const servings = Number(recipe?.servings) || 1;
+                  if (servings <= 1) return null;
                   return (
                     <div className="grid grid-cols-1 gap-1 text-[10px] text-muted-foreground sm:grid-cols-2">
                       <div className="bg-secondary/50 rounded-sm py-0.5 px-2 text-center sm:text-left">

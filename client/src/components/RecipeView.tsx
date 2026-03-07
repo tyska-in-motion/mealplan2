@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Clock, ChefHat, CalendarPlus, Settings2, Play, Pause, RotateCcw, ChefHatIcon } from "lucide-react";
+import { Clock, ChefHat, CalendarPlus, Settings2, Play, Pause, RotateCcw, ChefHatIcon, FileDown } from "lucide-react";
 import { calculateScaledAmount } from "@shared/scaling";
 import type { InstructionStep } from "@shared/schema";
 import { parseInstructionLines } from "@/lib/instruction-steps";
@@ -216,6 +216,55 @@ export function RecipeView({
     return `${formatAmount(grams)}${ri.unit || "g"}`;
   };
 
+
+  const handleExportIngredientsPdf = () => {
+    const printWindow = window.open("", "_blank", "width=900,height=1200");
+    if (!printWindow) return;
+
+    const printDate = new Date().toLocaleString("pl-PL");
+    const rows = ingredientRows
+      .map(({ ri }: any) => {
+        const ingredient = ri?.ingredient;
+        if (!ingredient) return "";
+
+        return `<tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #eee;">${ingredient.name || "-"}</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right;">${Math.round(Number(ingredient.calories) || 0)}</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right;">${Math.round(Number(ingredient.protein) || 0)}</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right;">${Math.round(Number(ingredient.carbs) || 0)}</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right;">${Math.round(Number(ingredient.fat) || 0)}</td>
+        </tr>`;
+      })
+      .join("");
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${recipe?.name || "Przepis"} - składniki</title>
+        </head>
+        <body style="font-family: Inter, Arial, sans-serif; margin: 24px; color: #111827;">
+          <h1 style="margin-bottom: 4px;">${recipe?.name || "Przepis"} - lista składników</h1>
+          <p style="margin-top: 0; color: #6b7280;">Wygenerowano: ${printDate}</p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+              <tr>
+                <th style="text-align: left; padding: 8px; border-bottom: 1px solid #d1d5db;">Składnik</th>
+                <th style="text-align: right; padding: 8px; border-bottom: 1px solid #d1d5db;">Kcal / 100g</th>
+                <th style="text-align: right; padding: 8px; border-bottom: 1px solid #d1d5db;">Białko / 100g</th>
+                <th style="text-align: right; padding: 8px; border-bottom: 1px solid #d1d5db;">Węgle / 100g</th>
+                <th style="text-align: right; padding: 8px; border-bottom: 1px solid #d1d5db;">Tłuszcze / 100g</th>
+              </tr>
+            </thead>
+            <tbody>${rows || '<tr><td colspan="5" style="padding: 8px; color: #6b7280;">Brak składników.</td></tr>'}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number; ingredientIds?: number[]; ingredientSource?: "ingredient" | "frequentAddon"; multiplier?: number }) => {
     const multiplier = typeof segment.multiplier === "number" && segment.multiplier > 0 ? segment.multiplier : 1;
     const ingredientIds = (segment.ingredientIds && segment.ingredientIds.length > 0)
@@ -238,14 +287,31 @@ export function RecipeView({
     return labels.join(", ");
   };
 
-  const baseCaloriesPerServing = Math.round((recipe?.ingredients || []).reduce((sum: number, ri: any) =>
-    sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
-  ) / recipeServings);
-  const withAddonsCaloriesPerServing = Math.round(((recipe?.ingredients || []).reduce((sum: number, ri: any) =>
-    sum + (ri.ingredient ? (ri.ingredient.calories * ri.amount / 100) : 0), 0
-  ) + (recipe?.frequentAddons || []).reduce((sum: number, addon: any) =>
-    sum + (addon.ingredient ? (addon.ingredient.calories * addon.amount / 100) : 0), 0
-  )) / recipeServings);
+  const nutritionTotals = useMemo(() => {
+    const totals = ingredientRows.reduce((sum: { calories: number; protein: number; carbs: number; fat: number }, row: any) => {
+      if (!row.ri?.ingredient) return sum;
+      const amount = getScaledAmount(row.ri, row.isFrequentAddon, row.scalingIngredient);
+      return {
+        calories: sum.calories + ((Number(row.ri.ingredient.calories) || 0) * amount / 100),
+        protein: sum.protein + ((Number(row.ri.ingredient.protein) || 0) * amount / 100),
+        carbs: sum.carbs + ((Number(row.ri.ingredient.carbs) || 0) * amount / 100),
+        fat: sum.fat + ((Number(row.ri.ingredient.fat) || 0) * amount / 100),
+      };
+    }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+    const divisor = isPlannedView ? (Number(servingsToUse) || 1) : (Number(recipeServings) || 1);
+    const safeDivisor = divisor > 0 ? divisor : 1;
+
+    return {
+      total: totals,
+      perServing: {
+        calories: totals.calories / safeDivisor,
+        protein: totals.protein / safeDivisor,
+        carbs: totals.carbs / safeDivisor,
+        fat: totals.fat / safeDivisor,
+      },
+    };
+  }, [ingredientRows, isPlannedView, servingsToUse, recipeServings]);
 
   if (!recipe) return null;
 
@@ -400,9 +466,7 @@ export function RecipeView({
               )}
               {!isPlannedView && (
                 <span className="flex items-center gap-1 bg-amber-100/60 text-amber-900 font-semibold px-2 py-1 rounded-lg text-xs">
-                  {withAddonsCaloriesPerServing > baseCaloriesPerServing
-                    ? `${baseCaloriesPerServing}-${withAddonsCaloriesPerServing} kcal / porcja`
-                    : `${baseCaloriesPerServing} kcal / porcja`}
+                  {`${Math.round(nutritionTotals.perServing.calories)} kcal / porcja`}
                 </span>
               )}
             </div>
@@ -412,42 +476,26 @@ export function RecipeView({
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground">Kalorie</p>
               <p className="text-xl font-bold text-primary">
-                {Math.round(ingredientRows.reduce((sum: number, row: any) => {
-                  if (!row.ri?.ingredient) return sum;
-                  const amount = getScaledAmount(row.ri, row.isFrequentAddon, row.scalingIngredient);
-                  return sum + (row.ri.ingredient.calories * amount / 100);
-                }, 0))}
+                {Math.round(nutritionTotals.perServing.calories)}
               </p>
-              <p className="text-[8px] text-muted-foreground">{isPlannedView ? "łącznie" : "na porcję"}</p>
+              <p className="text-[8px] text-muted-foreground">na porcję</p>
             </div>
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground">Białko</p>
               <p className="text-xl font-bold">
-                {Math.round(ingredientRows.reduce((sum: number, row: any) => {
-                  if (!row.ri?.ingredient) return sum;
-                  const amount = getScaledAmount(row.ri, row.isFrequentAddon, row.scalingIngredient);
-                  return sum + (row.ri.ingredient.protein * amount / 100);
-                }, 0))}g
+                {Math.round(nutritionTotals.perServing.protein)}g
               </p>
             </div>
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground">Węgle</p>
               <p className="text-xl font-bold">
-                {Math.round(ingredientRows.reduce((sum: number, row: any) => {
-                  if (!row.ri?.ingredient) return sum;
-                  const amount = getScaledAmount(row.ri, row.isFrequentAddon, row.scalingIngredient);
-                  return sum + (row.ri.ingredient.carbs * amount / 100);
-                }, 0))}g
+                {Math.round(nutritionTotals.perServing.carbs)}g
               </p>
             </div>
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground">Tłuszcz</p>
               <p className="text-xl font-bold">
-                {Math.round(ingredientRows.reduce((sum: number, row: any) => {
-                  if (!row.ri?.ingredient) return sum;
-                  const amount = getScaledAmount(row.ri, row.isFrequentAddon, row.scalingIngredient);
-                  return sum + (row.ri.ingredient.fat * amount / 100);
-                }, 0))}g
+                {Math.round(nutritionTotals.perServing.fat)}g
               </p>
             </div>
           </div>
@@ -456,12 +504,18 @@ export function RecipeView({
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-bold">Składniki</h3>
-                {onEditIngredients && allowIngredientEditing && (
-                  <Button variant="ghost" size="sm" onClick={onEditIngredients} className="text-primary hover:text-primary/80 h-7 text-xs">
-                    <Settings2 className="w-3 h-3 mr-1" />
-                    Edytuj składniki
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={handleExportIngredientsPdf} className="h-7 text-xs">
+                    <FileDown className="w-3 h-3 mr-1" />
+                    PDF składników
                   </Button>
-                )}
+                  {onEditIngredients && allowIngredientEditing && (
+                    <Button variant="ghost" size="sm" onClick={onEditIngredients} className="text-primary hover:text-primary/80 h-7 text-xs">
+                      <Settings2 className="w-3 h-3 mr-1" />
+                      Edytuj składniki
+                    </Button>
+                  )}
+                </div>
               </div>
               <ul className="space-y-2">
                 {ingredientRows.map(({ ri, isFrequentAddon, scalingIngredient }: any, idx: number) => {
