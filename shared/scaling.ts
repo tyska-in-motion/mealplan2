@@ -148,12 +148,9 @@ export function calculateScaledAmount(
 
   switch (scalingType) {
     case "FIXED": {
-      // FIXED means: amount is fixed for the whole base recipe batch.
-      // When user plans fewer servings than the recipe base, distribute proportionally.
-      // When user plans more servings, keep the fixed cap (do not increase further).
-      const normalizedBaseServings = baseServings > 0 ? baseServings : 1;
-      const ratio = newServings / normalizedBaseServings;
-      return baseAmount * Math.min(1, Math.max(0, ratio));
+      // FIXED means: keep exactly the configured amount, independent from servings.
+      // This is especially important for frequent addons selected per person.
+      return baseAmount;
     }
     case "STEP": {
       const thresholds = (ingredient.stepThresholds || [])
