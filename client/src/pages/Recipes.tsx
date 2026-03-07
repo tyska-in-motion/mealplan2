@@ -115,6 +115,14 @@ export default function Recipes() {
     return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",");
   };
 
+  const formatRange = (base: number, withAddons: number, suffix = "") => {
+    const baseFormatted = formatLocalizedNumber(base);
+    const withAddonsFormatted = formatLocalizedNumber(withAddons);
+    return base !== withAddons
+      ? `${baseFormatted}-${withAddonsFormatted}${suffix}`
+      : `${baseFormatted}${suffix}`;
+  };
+
 
   const alwaysAtHomeIngredientIds = useMemo(() =>
     (availableIngredients || [])
@@ -468,17 +476,56 @@ export default function Recipes() {
 
   const getRecipeCaloriesPerServing = (recipe: any) => {
     const servings = Number(recipe?.servings) || 1;
-    const baseTotal = (recipe?.ingredients || []).reduce((sum: number, ri: any) =>
-      sum + (ri.ingredient ? (ri.ingredient.calories * getIngredientAmount(ri) / 100) : 0), 0
-    );
+    const sumByNutrition = (items: any[]) => items.reduce((sum, item) => {
+      if (!item?.ingredient) return sum;
+      const amount = getIngredientAmount(item);
+      return {
+        calories: sum.calories + (Number(item.ingredient.calories) || 0) * amount / 100,
+        protein: sum.protein + (Number(item.ingredient.protein) || 0) * amount / 100,
+        carbs: sum.carbs + (Number(item.ingredient.carbs) || 0) * amount / 100,
+        fat: sum.fat + (Number(item.ingredient.fat) || 0) * amount / 100,
+        price: sum.price + (Number(item.ingredient.price) || 0) * amount / 100,
+      };
+    }, {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      price: 0,
+    });
 
-    const addonsTotal = (recipe?.frequentAddons || []).reduce((sum: number, addon: any) =>
-      sum + (addon.ingredient ? (addon.ingredient.calories * addon.amount / 100) : 0), 0
-    );
+    const baseTotal = sumByNutrition(recipe?.ingredients || []);
+    const addonsTotal = sumByNutrition(recipe?.frequentAddons || []);
+
+    const perServing = {
+      calories: {
+        base: Math.round(baseTotal.calories / servings),
+        withAddons: Math.round((baseTotal.calories + addonsTotal.calories) / servings),
+      },
+      protein: {
+        base: Math.round(baseTotal.protein / servings),
+        withAddons: Math.round((baseTotal.protein + addonsTotal.protein) / servings),
+      },
+      carbs: {
+        base: Math.round(baseTotal.carbs / servings),
+        withAddons: Math.round((baseTotal.carbs + addonsTotal.carbs) / servings),
+      },
+      fat: {
+        base: Math.round(baseTotal.fat / servings),
+        withAddons: Math.round((baseTotal.fat + addonsTotal.fat) / servings),
+      },
+      price: {
+        base: baseTotal.price / servings,
+        withAddons: (baseTotal.price + addonsTotal.price) / servings,
+      },
+    };
 
     return {
-      base: Math.round(baseTotal / servings),
-      withAddons: Math.round((baseTotal + addonsTotal) / servings),
+      perServing,
+      totalPrice: {
+        base: baseTotal.price,
+        withAddons: baseTotal.price + addonsTotal.price,
+      },
     };
   };
 
@@ -1426,9 +1473,10 @@ export default function Recipes() {
                               {recipe.prepTime}m
                             </div>
                             <div className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                              {Math.round(((recipe.ingredients || []).reduce((sum: number, ri: any) => 
-                                sum + (ri.ingredient ? (ri.ingredient.price * getIngredientAmount(ri) / 100) : 0), 0)) / (recipe.servings || 1)
-                              )} PLN / porcja
+                              {(() => {
+                                const nutrition = getRecipeCaloriesPerServing(recipe);
+                                return `${formatRange(nutrition.perServing.price.base, nutrition.perServing.price.withAddons, " PLN")} / porcja`;
+                              })()}
                             </div>
                           </div>
               </div>
@@ -1443,13 +1491,24 @@ export default function Recipes() {
                   <span className="flex items-center gap-1"><ChefHat className="w-3 h-3" /> {recipe.ingredients.length} składników ({recipe.servings || 1} porcji)</span>
                   <span>
                       {(() => {
-                        const calories = getRecipeCaloriesPerServing(recipe);
-                        return calories.withAddons > calories.base
-                          ? `${calories.base}-${calories.withAddons} kcal / porcja`
-                          : `${calories.base} kcal / porcja`;
+                        const nutrition = getRecipeCaloriesPerServing(recipe);
+                        return `${formatRange(nutrition.perServing.calories.base, nutrition.perServing.calories.withAddons, " kcal")} / porcja`;
                       })()}
                     </span>
                 </div>
+                {(() => {
+                  const nutrition = getRecipeCaloriesPerServing(recipe);
+                  return (
+                    <div className="grid grid-cols-1 gap-1 text-[10px] text-muted-foreground sm:grid-cols-2">
+                      <div className="bg-secondary/50 rounded-sm py-0.5 px-2 text-center sm:text-left">
+                        Cena porcji (bez/z dodatkami): {formatRange(nutrition.perServing.price.base, nutrition.perServing.price.withAddons, " PLN")}
+                      </div>
+                      <div className="bg-secondary/50 rounded-sm py-0.5 px-2 text-center sm:text-left">
+                        Cena przepisu (bez/z dodatkami): {formatRange(nutrition.totalPrice.base, nutrition.totalPrice.withAddons, " PLN")}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {(() => {
                   const totalIngredients = (recipe.ingredients || []).length;
                   const matchingIngredients = (recipe.ingredients || []).filter((ri: any) =>
@@ -1464,16 +1523,28 @@ export default function Recipes() {
                 })()}
                   <div className="grid grid-cols-4 gap-1 text-[10px] text-center text-muted-foreground">
                     <div className="bg-secondary/50 rounded-sm py-0.5">
-                      B: {recipe.stats?.protein || 0}g
+                      {(() => {
+                        const nutrition = getRecipeCaloriesPerServing(recipe);
+                        return `B: ${formatRange(nutrition.perServing.protein.base, nutrition.perServing.protein.withAddons, "g")}`;
+                      })()}
                     </div>
                     <div className="bg-secondary/50 rounded-sm py-0.5">
-                      W: {recipe.stats?.carbs || 0}g
+                      {(() => {
+                        const nutrition = getRecipeCaloriesPerServing(recipe);
+                        return `W: ${formatRange(nutrition.perServing.carbs.base, nutrition.perServing.carbs.withAddons, "g")}`;
+                      })()}
                     </div>
                     <div className="bg-secondary/50 rounded-sm py-0.5">
-                      T: {recipe.stats?.fat || 0}g
+                      {(() => {
+                        const nutrition = getRecipeCaloriesPerServing(recipe);
+                        return `T: ${formatRange(nutrition.perServing.fat.base, nutrition.perServing.fat.withAddons, "g")}`;
+                      })()}
                     </div>
                     <div className="bg-primary/10 text-primary font-bold rounded-sm py-0.5">
-                      {recipe.stats?.calories || 0} kcal
+                      {(() => {
+                        const nutrition = getRecipeCaloriesPerServing(recipe);
+                        return `${formatRange(nutrition.perServing.calories.base, nutrition.perServing.calories.withAddons, " kcal")}`;
+                      })()}
                     </div>
                   </div>
                 </div>
