@@ -50,14 +50,14 @@ export interface IStorage {
   copyDayEntries(sourceDate: string, targetDate: string, replaceTarget?: boolean): Promise<number>;
 
   // Shopping List Checks
-  getShoppingListChecks(): Promise<Record<number, boolean>>;
-  toggleShoppingListCheck(ingredientId: number, isChecked: boolean): Promise<void>;
-  getShoppingListExtras(): Promise<any[]>;
-  addShoppingListExtra(input: { name: string; amount?: number; unit?: string; category?: string }): Promise<any>;
+  getShoppingListChecks(periodStart: string, periodEnd: string): Promise<Record<number, boolean>>;
+  toggleShoppingListCheck(ingredientId: number, periodStart: string, periodEnd: string, isChecked: boolean): Promise<void>;
+  getShoppingListExtras(periodStart: string, periodEnd: string): Promise<any[]>;
+  addShoppingListExtra(periodStart: string, periodEnd: string, input: { name: string; amount?: number; unit?: string; category?: string }): Promise<any>;
   deleteShoppingListExtra(id: number): Promise<void>;
   toggleShoppingListExtraCheck(id: number, isChecked: boolean): Promise<void>;
-  getShoppingListExcludedItems(): Promise<number[]>;
-  setShoppingListExcludedItem(ingredientId: number, excluded: boolean): Promise<void>;
+  getShoppingListExcludedItems(periodStart: string, periodEnd: string): Promise<number[]>;
+  setShoppingListExcludedItem(ingredientId: number, periodStart: string, periodEnd: string, excluded: boolean): Promise<void>;
 
   // User Settings
   getUserSettings(): Promise<UserSettings>;
@@ -474,29 +474,41 @@ export class DatabaseStorage implements IStorage {
     return entries as MealEntryWithRecipe[];
   }
 
-  async getShoppingListChecks(): Promise<Record<number, boolean>> {
-    const checks = await db.select().from(shoppingListChecks);
+  async getShoppingListChecks(periodStart: string, periodEnd: string): Promise<Record<number, boolean>> {
+    const checks = await db.select().from(shoppingListChecks).where(
+      and(
+        eq(shoppingListChecks.periodStart, periodStart),
+        eq(shoppingListChecks.periodEnd, periodEnd),
+      )
+    );
     return checks.reduce((acc, curr) => {
       acc[curr.ingredientId] = curr.isChecked;
       return acc;
     }, {} as Record<number, boolean>);
   }
 
-  async toggleShoppingListCheck(ingredientId: number, isChecked: boolean): Promise<void> {
+  async toggleShoppingListCheck(ingredientId: number, periodStart: string, periodEnd: string, isChecked: boolean): Promise<void> {
     await db.insert(shoppingListChecks)
-      .values({ ingredientId, isChecked, updatedAt: new Date() })
+      .values({ ingredientId, periodStart, periodEnd, isChecked, updatedAt: new Date() })
       .onConflictDoUpdate({
-        target: shoppingListChecks.ingredientId,
+        target: [shoppingListChecks.ingredientId, shoppingListChecks.periodStart, shoppingListChecks.periodEnd],
         set: { isChecked, updatedAt: new Date() }
       });
   }
 
-  async getShoppingListExtras(): Promise<any[]> {
-    return await db.select().from(shoppingListExtras);
+  async getShoppingListExtras(periodStart: string, periodEnd: string): Promise<any[]> {
+    return await db.select().from(shoppingListExtras).where(
+      and(
+        eq(shoppingListExtras.periodStart, periodStart),
+        eq(shoppingListExtras.periodEnd, periodEnd),
+      )
+    );
   }
 
-  async addShoppingListExtra(input: { name: string; amount?: number; unit?: string; category?: string }): Promise<any> {
+  async addShoppingListExtra(periodStart: string, periodEnd: string, input: { name: string; amount?: number; unit?: string; category?: string }): Promise<any> {
     const [created] = await db.insert(shoppingListExtras).values({
+      periodStart,
+      periodEnd,
       name: input.name,
       amount: input.amount ?? 1,
       unit: input.unit || "szt",
@@ -515,23 +527,34 @@ export class DatabaseStorage implements IStorage {
       .where(eq(shoppingListExtras.id, id));
   }
 
-  async getShoppingListExcludedItems(): Promise<number[]> {
-    const rows = await db.select().from(shoppingListExcludedItems);
+  async getShoppingListExcludedItems(periodStart: string, periodEnd: string): Promise<number[]> {
+    const rows = await db.select().from(shoppingListExcludedItems).where(
+      and(
+        eq(shoppingListExcludedItems.periodStart, periodStart),
+        eq(shoppingListExcludedItems.periodEnd, periodEnd),
+      )
+    );
     return rows.map((row) => row.ingredientId);
   }
 
-  async setShoppingListExcludedItem(ingredientId: number, excluded: boolean): Promise<void> {
+  async setShoppingListExcludedItem(ingredientId: number, periodStart: string, periodEnd: string, excluded: boolean): Promise<void> {
     if (excluded) {
       await db.insert(shoppingListExcludedItems)
-        .values({ ingredientId, updatedAt: new Date() })
+        .values({ ingredientId, periodStart, periodEnd, updatedAt: new Date() })
         .onConflictDoUpdate({
-          target: shoppingListExcludedItems.ingredientId,
+          target: [shoppingListExcludedItems.ingredientId, shoppingListExcludedItems.periodStart, shoppingListExcludedItems.periodEnd],
           set: { updatedAt: new Date() }
         });
       return;
     }
 
-    await db.delete(shoppingListExcludedItems).where(eq(shoppingListExcludedItems.ingredientId, ingredientId));
+    await db.delete(shoppingListExcludedItems).where(
+      and(
+        eq(shoppingListExcludedItems.ingredientId, ingredientId),
+        eq(shoppingListExcludedItems.periodStart, periodStart),
+        eq(shoppingListExcludedItems.periodEnd, periodEnd),
+      )
+    );
   }
 }
 
