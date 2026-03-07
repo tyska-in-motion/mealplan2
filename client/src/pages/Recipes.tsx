@@ -1481,10 +1481,6 @@ export default function Recipes() {
                           </div>
               </div>
               
-              <p className="text-sm text-muted-foreground line-clamp-2 mb-4 flex-1">
-                {recipe.description || recipe.instructions || "No description provided."}
-              </p>
-              
               <div className="mt-auto pt-4 border-t border-dashed border-border">
                 <div className="flex flex-col gap-2">
                 <div className="flex justify-between text-xs text-muted-foreground font-medium">
