@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { pl } from "date-fns/locale";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, fetchWithTimeout, queryClient } from "@/lib/queryClient";
 
 
 const roundToSingleDecimal = (value: number) => Math.round(value * 10) / 10;
@@ -35,12 +35,12 @@ export default function ShoppingList() {
   const startStr = format(range.start, "yyyy-MM-dd");
   const endStr = format(range.end, "yyyy-MM-dd");
 
-  const { data: list, isLoading } = useShoppingList(startStr, endStr);
+  const { data: list, isLoading, isError, error, refetch } = useShoppingList(startStr, endStr);
   
   const { data: checkedItems = {} } = useQuery<Record<number, boolean>>({
     queryKey: ["/api/shopping-list/checks", startStr, endStr],
     queryFn: async () => {
-      const response = await fetch(`/api/shopping-list/checks?startDate=${startStr}&endDate=${endStr}`);
+      const response = await fetchWithTimeout(`/api/shopping-list/checks?startDate=${startStr}&endDate=${endStr}`, {}, 10000);
       if (!response.ok) throw new Error("Nie udało się pobrać statusów");
       return response.json();
     },
@@ -50,7 +50,7 @@ export default function ShoppingList() {
   const { data: excludedItems = [] } = useQuery<number[]>({
     queryKey: ["/api/shopping-list/exclusions", startStr, endStr],
     queryFn: async () => {
-      const response = await fetch(`/api/shopping-list/exclusions?startDate=${startStr}&endDate=${endStr}`);
+      const response = await fetchWithTimeout(`/api/shopping-list/exclusions?startDate=${startStr}&endDate=${endStr}`, {}, 10000);
       if (!response.ok) throw new Error("Nie udało się pobrać wykluczeń");
       return response.json();
     },
@@ -293,7 +293,15 @@ export default function ShoppingList() {
         </div>
       </div>
 
-      {isLoading ? <LoadingSpinner /> : (
+      {isLoading ? <LoadingSpinner /> : isError ? (
+        <div className="bg-white rounded-3xl shadow-sm border border-border/50 p-8 text-center space-y-3">
+          <p className="text-sm text-red-600 font-medium">Nie udało się wczytać listy zakupów.</p>
+          <p className="text-xs text-muted-foreground">{error instanceof Error ? error.message : "Spróbuj ponownie za chwilę."}</p>
+          <Button type="button" variant="outline" onClick={() => refetch()} className="h-9">
+            Spróbuj ponownie
+          </Button>
+        </div>
+      ) : (
         <div className="bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
           <div className="p-6 bg-primary/5 border-b border-border/50 flex items-center justify-between">
             <h2 className="font-bold text-lg flex items-center gap-2">
