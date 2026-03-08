@@ -536,19 +536,35 @@ export async function registerRoutes(
 
     const shoppingMap = new Map<number, { name: string, amount: number, unit: string, category: string, unitWeight: number | null }>();
 
-    entries.filter((entry) => entry.isEaten !== true).forEach(entry => {
+    for (const entry of entries.filter((item) => item.isEaten !== true)) {
       const entryIngredients = (entry.ingredients || []).filter((ri: any) => !!ri?.ingredient);
-      const recipeIngredients = [
+      const recipeIngredientsFromRange = [
         ...(entry.recipe?.ingredients || []),
         ...(entry.recipe?.frequentAddons || []),
       ].filter((ri: any) => !!ri?.ingredient);
-      const ingredientsToUse = entryIngredients.length > 0 ? entryIngredients : recipeIngredients;
+
+      let ingredientsToUse = entryIngredients.length > 0 ? entryIngredients : recipeIngredientsFromRange;
+
+      if (ingredientsToUse.length === 0 && entry.recipeId) {
+        const recipeFallback = await storage.getRecipe(Number(entry.recipeId));
+        ingredientsToUse = [
+          ...(recipeFallback?.ingredients || []),
+          ...(recipeFallback?.frequentAddons || []),
+        ].filter((ri: any) => !!ri?.ingredient);
+      }
+
+      if (ingredientsToUse.length === 0) {
+        console.warn("Meal entry skipped in shopping list due to missing ingredients", {
+          entryId: entry.id,
+          recipeId: entry.recipeId,
+        });
+      }
 
       const occurrenceTracker = new Map<number, number>();
-      ingredientsToUse.forEach(ri => {
+      for (const ri of ingredientsToUse) {
         const ingredientId = Number(ri?.ingredientId);
         if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
-          return;
+          continue;
         }
 
         const existing = shoppingMap.get(ingredientId);
@@ -564,8 +580,8 @@ export async function registerRoutes(
             unitWeight: (ri.ingredient as any).unitWeight
           });
         }
-      });
-    });
+      }
+    }
 
     const list = Array.from(shoppingMap.entries()).map(([id, val]) => ({
       ingredientId: id,
