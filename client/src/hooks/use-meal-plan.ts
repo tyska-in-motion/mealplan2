@@ -136,10 +136,15 @@ export function useShoppingList(startDate: string, endDate: string) {
     queryKey: [api.mealPlan.getShoppingList.path, startDate, endDate],
     queryFn: async () => {
       const url = `${api.mealPlan.getShoppingList.path}?startDate=${startDate}&endDate=${endDate}`;
-      const res = await fetchWithTimeout(url);
-      if (!res.ok) throw new Error("Failed to fetch shopping list");
+      const res = await fetchWithTimeout(url, {}, 20000);
+      if (!res.ok) {
+        const message = await res.text().catch(() => "Failed to fetch shopping list");
+        throw new Error(message || "Failed to fetch shopping list");
+      }
       return api.mealPlan.getShoppingList.responses[200].parse(await res.json());
     },
     enabled: !!startDate && !!endDate,
+    placeholderData: (previousData) => previousData ?? [],
+    retry: 1,
   });
 }
