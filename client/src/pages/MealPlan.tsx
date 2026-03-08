@@ -1411,12 +1411,27 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
           });
         }
 
-        const addonTotals = collectFrequentAddonAmounts(pair.A);
-        collectFrequentAddonAmounts(pair.B).forEach((addon, ingredientId) => {
+        const addonsA = collectFrequentAddonAmounts(pair.A);
+        const addonsB = collectFrequentAddonAmounts(pair.B);
+        const addonTotals = new Map<number, { amount: number; ingredient: any; byPerson: { A: number; B: number } }>();
+
+        addonsA.forEach((addon, ingredientId) => {
+          addonTotals.set(ingredientId, {
+            amount: addon.amount,
+            ingredient: addon.ingredient || null,
+            byPerson: { A: addon.amount, B: 0 },
+          });
+        });
+
+        addonsB.forEach((addon, ingredientId) => {
           const existing = addonTotals.get(ingredientId);
           addonTotals.set(ingredientId, {
             amount: (existing?.amount || 0) + addon.amount,
             ingredient: existing?.ingredient || addon.ingredient || null,
+            byPerson: {
+              A: existing?.byPerson?.A || 0,
+              B: (existing?.byPerson?.B || 0) + addon.amount,
+            },
           });
         });
 
@@ -1426,6 +1441,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
             const nextAmount = (Number(existingIngredient.amount) || 0) + addon.amount;
             existingIngredient.amount = nextAmount;
             existingIngredient.calculatedAmount = nextAmount;
+            existingIngredient.sharedAddonAmounts = addon.byPerson;
             if (!existingIngredient.ingredient && addon.ingredient) {
               existingIngredient.ingredient = addon.ingredient;
             }
@@ -1439,6 +1455,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
             ingredient: addon.ingredient,
             scalingType: "FIXED",
             baseAmount: addon.amount,
+            sharedAddonAmounts: addon.byPerson,
           });
         });
 
