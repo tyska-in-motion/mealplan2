@@ -510,6 +510,26 @@ export async function registerRoutes(
       return res.status(400).json({ message: "Brak wymaganego zakresu dat" });
     }
 
+    const safeScaledAmount = (entry: any, ri: any, occurrenceTracker: Map<number, number>) => {
+      try {
+        const entryServings = Number(entry?.servings) > 0 ? Number(entry.servings) : 1;
+        const recipeServings = Number(entry?.recipe?.servings) > 0 ? Number(entry.recipe.servings) : 1;
+        const amount = calculateScaledAmount(
+          resolveIngredientForScaling(entry, ri, occurrenceTracker),
+          entryServings,
+          recipeServings,
+        );
+        return Number.isFinite(amount) && amount >= 0 ? amount : 0;
+      } catch (error) {
+        console.warn("Skipping invalid shopping-list ingredient scaling", {
+          ingredientId: ri?.ingredientId,
+          entryId: entry?.id,
+          error,
+        });
+        return Number(ri?.amount) > 0 ? Number(ri.amount) : 0;
+      }
+    };
+
     const { startDate, endDate } = rangeParse.data;
     const entries = await storage.getMealEntriesRange(startDate, endDate);
     const excludedItems = new Set(await storage.getShoppingListExcludedItems(startDate, endDate));
@@ -517,23 +537,20 @@ export async function registerRoutes(
     const shoppingMap = new Map<number, { name: string, amount: number, unit: string, category: string, unitWeight: number | null }>();
 
     entries.filter((entry) => !entry.isEaten).forEach(entry => {
-      const ingredientsToUse = entry.ingredients.length > 0
-        ? entry.ingredients
-        : (entry.recipe?.ingredients || []);
+      const entryIngredients = (entry.ingredients || []).filter((ri: any) => !!ri?.ingredient);
+      const recipeIngredients = (entry.recipe?.ingredients || []).filter((ri: any) => !!ri?.ingredient);
+      const ingredientsToUse = entryIngredients.length > 0 ? entryIngredients : recipeIngredients;
 
       const occurrenceTracker = new Map<number, number>();
       ingredientsToUse.forEach(ri => {
-        if (!ri.ingredient) return;
         const existing = shoppingMap.get(ri.ingredientId);
-        const entryServings = Number(entry.servings) || 1;
-        const recipeServings = Number(entry.recipe?.servings || 1);
-        const amount = calculateScaledAmount(resolveIngredientForScaling(entry, ri, occurrenceTracker), entryServings, recipeServings);
+        const amount = safeScaledAmount(entry, ri, occurrenceTracker);
         if (existing) {
           existing.amount += amount;
         } else {
           shoppingMap.set(ri.ingredientId, {
             name: (ri.ingredient as any).name,
-            amount: amount,
+            amount,
             unit: "g",
             category: (ri.ingredient as any).category || "Inne",
             unitWeight: (ri.ingredient as any).unitWeight
@@ -545,7 +562,7 @@ export async function registerRoutes(
     const list = Array.from(shoppingMap.entries()).map(([id, val]) => ({
       ingredientId: id,
       name: val.name,
-      totalAmount: val.amount,
+      totalAmount: Number.isFinite(val.amount) && val.amount > 0 ? val.amount : 0,
       unit: val.unit,
       category: val.category,
       unitWeight: val.unitWeight,
