@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Clock, ChefHat, CalendarPlus, Settings2, Play, Pause, RotateCcw, ChefHatIcon, FileDown } from "lucide-react";
+import { Clock, ChefHat, CalendarPlus, Settings2, Play, Pause, RotateCcw, ChefHatIcon } from "lucide-react";
 import { calculateScaledAmount } from "@shared/scaling";
 import type { InstructionStep } from "@shared/schema";
 import { parseInstructionLines } from "@/lib/instruction-steps";
@@ -217,53 +217,20 @@ export function RecipeView({
   };
 
 
-  const handleExportIngredientsPdf = () => {
-    const printWindow = window.open("", "_blank", "width=900,height=1200");
-    if (!printWindow) return;
+  const getSharedAddonPersonInfo = (ri: any, isFrequentAddon = false) => {
+    if (!isFrequentAddon) return null;
 
-    const printDate = new Date().toLocaleString("pl-PL");
-    const rows = ingredientRows
-      .map(({ ri }: any) => {
-        const ingredient = ri?.ingredient;
-        if (!ingredient) return "";
+    const ty = Number(ri?.sharedAddonAmounts?.A);
+    const ma = Number(ri?.sharedAddonAmounts?.B);
+    if (!Number.isFinite(ty) && !Number.isFinite(ma)) return null;
 
-        return `<tr>
-          <td style="padding: 6px 8px; border-bottom: 1px solid #eee;">${ingredient.name || "-"}</td>
-          <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right;">${Math.round(Number(ingredient.calories) || 0)}</td>
-          <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right;">${Math.round(Number(ingredient.protein) || 0)}</td>
-          <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right;">${Math.round(Number(ingredient.carbs) || 0)}</td>
-          <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right;">${Math.round(Number(ingredient.fat) || 0)}</td>
-        </tr>`;
-      })
-      .join("");
+    const unit = ri?.unit || ri?.ingredient?.unit || "g";
+    const tyLabel = `${formatAmount(Number.isFinite(ty) ? ty : 0)}${unit}`;
+    const maLabel = `${formatAmount(Number.isFinite(ma) ? ma : 0)}${unit}`;
 
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${recipe?.name || "Przepis"} - składniki</title>
-        </head>
-        <body style="font-family: Inter, Arial, sans-serif; margin: 24px; color: #111827;">
-          <h1 style="margin-bottom: 4px;">${recipe?.name || "Przepis"} - lista składników</h1>
-          <p style="margin-top: 0; color: #6b7280;">Wygenerowano: ${printDate}</p>
-          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-            <thead>
-              <tr>
-                <th style="text-align: left; padding: 8px; border-bottom: 1px solid #d1d5db;">Składnik</th>
-                <th style="text-align: right; padding: 8px; border-bottom: 1px solid #d1d5db;">Kcal / 100g</th>
-                <th style="text-align: right; padding: 8px; border-bottom: 1px solid #d1d5db;">Białko / 100g</th>
-                <th style="text-align: right; padding: 8px; border-bottom: 1px solid #d1d5db;">Węgle / 100g</th>
-                <th style="text-align: right; padding: 8px; border-bottom: 1px solid #d1d5db;">Tłuszcze / 100g</th>
-              </tr>
-            </thead>
-            <tbody>${rows || '<tr><td colspan="5" style="padding: 8px; color: #6b7280;">Brak składników.</td></tr>'}</tbody>
-          </table>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
+    return `Tysia: ${tyLabel} • Mati: ${maLabel}`;
   };
+
 
   const getCookingModeIngredientLabel = (segment: { text: string; ingredientId: number; ingredientIds?: number[]; ingredientSource?: "ingredient" | "frequentAddon"; multiplier?: number }) => {
     const multiplier = typeof segment.multiplier === "number" && segment.multiplier > 0 ? segment.multiplier : 1;
@@ -505,10 +472,6 @@ export function RecipeView({
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-bold">Składniki</h3>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={handleExportIngredientsPdf} className="h-7 text-xs">
-                    <FileDown className="w-3 h-3 mr-1" />
-                    PDF składników
-                  </Button>
                   {onEditIngredients && allowIngredientEditing && (
                     <Button variant="ghost" size="sm" onClick={onEditIngredients} className="text-primary hover:text-primary/80 h-7 text-xs">
                       <Settings2 className="w-3 h-3 mr-1" />
@@ -549,6 +512,15 @@ export function RecipeView({
                         {getIngredientAmountLabel(ri, isFrequentAddon, scalingIngredient)}
                       </span>
                     </div>
+                    {(() => {
+                      const sharedInfo = getSharedAddonPersonInfo(ri, isFrequentAddon);
+                      if (!sharedInfo) return null;
+                      return (
+                        <span className="text-[10px] text-emerald-700">
+                          {sharedInfo}
+                        </span>
+                      );
+                    })()}
                     {Number(ri.ingredient?.unitWeight || 0) > 0 && (
                       <span className="text-[10px] text-muted-foreground italic">
                         ({ri.ingredient.unitDescription ? `${ri.ingredient.unitDescription} - ` : ""}1 sztuka to ok. {ri.ingredient.unitWeight}g)

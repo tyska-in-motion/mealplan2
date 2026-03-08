@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
+import { format, addDays, subDays, eachDayOfInterval } from "date-fns";
 import { pl } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, X, CheckCircle2, Circle, Minus, Eye, Carrot, Copy, Trash2 } from "lucide-react";
 import { useDayPlan, useAddMealEntry, useDeleteMealEntry, useToggleEaten, useUpdateMealEntry, useCopyDayPlan } from "@/hooks/use-meal-plan";
@@ -46,7 +46,7 @@ export default function MealPlan() {
   }, [location]);
   
   const weekDays = useMemo(() => {
-    const start = startOfWeek(baseDate, { weekStartsOn: 1 });
+    const start = baseDate;
     return eachDayOfInterval({
       start,
       end: addDays(start, 6)
@@ -77,8 +77,8 @@ export default function MealPlan() {
   const { mutate: updateMealEntry, isPending: isSaving } = useUpdateMealEntry();
   const { mutate: copyDayPlan, isPending: isCopyingDay } = useCopyDayPlan();
   const { data: allAvailableIngredients } = useIngredients();
-  const weekStart = format(startOfWeek(baseDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
-  const weekEnd = format(endOfWeek(baseDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
+  const weekStart = format(weekDays[0], "yyyy-MM-dd");
+  const weekEnd = format(weekDays[6], "yyyy-MM-dd");
   const { data: shoppingListExcludedIds = [] } = useQuery<number[]>({
     queryKey: ["/api/shopping-list/exclusions", weekStart, weekEnd],
     queryFn: async () => {
@@ -1411,12 +1411,27 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
           });
         }
 
-        const addonTotals = collectFrequentAddonAmounts(pair.A);
-        collectFrequentAddonAmounts(pair.B).forEach((addon, ingredientId) => {
+        const addonsA = collectFrequentAddonAmounts(pair.A);
+        const addonsB = collectFrequentAddonAmounts(pair.B);
+        const addonTotals = new Map<number, { amount: number; ingredient: any; byPerson: { A: number; B: number } }>();
+
+        addonsA.forEach((addon, ingredientId) => {
+          addonTotals.set(ingredientId, {
+            amount: addon.amount,
+            ingredient: addon.ingredient || null,
+            byPerson: { A: addon.amount, B: 0 },
+          });
+        });
+
+        addonsB.forEach((addon, ingredientId) => {
           const existing = addonTotals.get(ingredientId);
           addonTotals.set(ingredientId, {
             amount: (existing?.amount || 0) + addon.amount,
             ingredient: existing?.ingredient || addon.ingredient || null,
+            byPerson: {
+              A: existing?.byPerson?.A || 0,
+              B: (existing?.byPerson?.B || 0) + addon.amount,
+            },
           });
         });
 
@@ -1426,6 +1441,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
             const nextAmount = (Number(existingIngredient.amount) || 0) + addon.amount;
             existingIngredient.amount = nextAmount;
             existingIngredient.calculatedAmount = nextAmount;
+            existingIngredient.sharedAddonAmounts = addon.byPerson;
             if (!existingIngredient.ingredient && addon.ingredient) {
               existingIngredient.ingredient = addon.ingredient;
             }
@@ -1439,6 +1455,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
             ingredient: addon.ingredient,
             scalingType: "FIXED",
             baseAmount: addon.amount,
+            sharedAddonAmounts: addon.byPerson,
           });
         });
 
