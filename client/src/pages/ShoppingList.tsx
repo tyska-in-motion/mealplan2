@@ -68,6 +68,22 @@ export default function ShoppingList() {
         endDate: endStr,
       });
     },
+    onMutate: async ({ id, checked }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/shopping-list/checks", startStr, endStr] });
+      const previousChecks = queryClient.getQueryData<Record<number, boolean>>(["/api/shopping-list/checks", startStr, endStr]) ?? {};
+
+      queryClient.setQueryData<Record<number, boolean>>(["/api/shopping-list/checks", startStr, endStr], {
+        ...previousChecks,
+        [id]: checked,
+      });
+
+      return { previousChecks };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousChecks) {
+        queryClient.setQueryData(["/api/shopping-list/checks", startStr, endStr], context.previousChecks);
+      }
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/checks", startStr, endStr] });
     }
@@ -104,14 +120,33 @@ export default function ShoppingList() {
         endDate: endStr,
       });
     },
+    onMutate: async ({ ingredientId, excluded }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/shopping-list/exclusions", startStr, endStr] });
+
+      const previousExcluded = queryClient.getQueryData<number[]>(["/api/shopping-list/exclusions", startStr, endStr]) ?? [];
+      const nextExcluded = excluded
+        ? Array.from(new Set([...previousExcluded, ingredientId]))
+        : previousExcluded.filter((id) => id !== ingredientId);
+
+      queryClient.setQueryData<number[]>(["/api/shopping-list/exclusions", startStr, endStr], nextExcluded);
+
+      return { previousExcluded };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousExcluded) {
+        queryClient.setQueryData(["/api/shopping-list/exclusions", startStr, endStr], context.previousExcluded);
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/exclusions", startStr, endStr] });
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
     }
   });
 
-  const activeItems = (list || []).filter((item: any) => !item.isExcluded);
-  const excludedFromHomeItems = (list || []).filter((item: any) => !!item.isExcluded);
+  const excludedSet = useMemo(() => new Set(excludedItems), [excludedItems]);
+
+  const activeItems = (list || []).filter((item: any) => item.isExtra || !excludedSet.has(item.ingredientId));
+  const excludedFromHomeItems = (list || []).filter((item: any) => !item.isExtra && excludedSet.has(item.ingredientId));
 
   const sortedActiveItems = useMemo(() => {
     return [...activeItems].sort((a: any, b: any) => {
@@ -445,7 +480,7 @@ export default function ShoppingList() {
       {excludedFromHomeItems.length > 0 && (
         <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
           <div className="p-6 bg-muted/40 border-b border-border/50 flex items-center justify-between">
-            <h2 className="font-bold text-lg">Masz już w domu</h2>
+            <h2 className="font-bold text-lg">Posiadane</h2>
             <span className="text-sm text-muted-foreground">{excludedFromHomeItems.length} pozycji</span>
           </div>
           <div className="divide-y divide-border/50">
