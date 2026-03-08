@@ -144,5 +144,8 @@ export function useShoppingList(startDate: string, endDate: string) {
       return api.mealPlan.getShoppingList.responses[200].parse(await res.json());
     },
     enabled: !!startDate && !!endDate,
+    initialData: [],
+    placeholderData: (previousData) => previousData ?? [],
+    retry: 1,
   });
 }
