@@ -136,7 +136,7 @@ export function useShoppingList(startDate: string, endDate: string) {
     queryKey: [api.mealPlan.getShoppingList.path, startDate, endDate],
     queryFn: async () => {
       const url = `${api.mealPlan.getShoppingList.path}?startDate=${startDate}&endDate=${endDate}`;
-      const res = await fetchWithTimeout(url);
+      const res = await fetchWithTimeout(url, {}, 15000);
       if (!res.ok) throw new Error("Failed to fetch shopping list");
       return api.mealPlan.getShoppingList.responses[200].parse(await res.json());
     },
