@@ -146,5 +146,8 @@ export function useShoppingList(startDate: string, endDate: string) {
     enabled: !!startDate && !!endDate,
     placeholderData: (previousData) => previousData ?? [],
     retry: 1,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
