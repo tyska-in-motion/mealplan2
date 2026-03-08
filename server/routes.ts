@@ -538,7 +538,10 @@ export async function registerRoutes(
 
     entries.filter((entry) => !entry.isEaten).forEach(entry => {
       const entryIngredients = (entry.ingredients || []).filter((ri: any) => !!ri?.ingredient);
-      const recipeIngredients = (entry.recipe?.ingredients || []).filter((ri: any) => !!ri?.ingredient);
+      const recipeIngredients = [
+        ...(entry.recipe?.ingredients || []),
+        ...(entry.recipe?.frequentAddons || []),
+      ].filter((ri: any) => !!ri?.ingredient);
       const ingredientsToUse = entryIngredients.length > 0 ? entryIngredients : recipeIngredients;
 
       const occurrenceTracker = new Map<number, number>();
