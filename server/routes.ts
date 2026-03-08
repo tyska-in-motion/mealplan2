@@ -501,7 +501,16 @@ export async function registerRoutes(
   });
 
   app.get(api.mealPlan.getShoppingList.path, async (req, res) => {
-    const { startDate, endDate } = req.query as { startDate: string, endDate: string };
+    const rangeParse = z.object({
+      startDate: z.string().min(1),
+      endDate: z.string().min(1),
+    }).safeParse(req.query);
+
+    if (!rangeParse.success) {
+      return res.status(400).json({ message: "Brak wymaganego zakresu dat" });
+    }
+
+    const { startDate, endDate } = rangeParse.data;
     const entries = await storage.getMealEntriesRange(startDate, endDate);
     const excludedItems = new Set(await storage.getShoppingListExcludedItems(startDate, endDate));
 
@@ -564,8 +573,12 @@ export async function registerRoutes(
     const input = z.object({
       startDate: z.string().min(1),
       endDate: z.string().min(1),
-    }).parse(req.query);
-    const checks = await storage.getShoppingListChecks(input.startDate, input.endDate);
+    }).safeParse(req.query);
+
+    if (!input.success) {
+      return res.json({});
+    }
+    const checks = await storage.getShoppingListChecks(input.data.startDate, input.data.endDate);
     res.json(checks);
   });
 
@@ -575,8 +588,12 @@ export async function registerRoutes(
       isChecked: z.boolean(),
       startDate: z.string().min(1),
       endDate: z.string().min(1),
-    }).parse(req.body);
-    await storage.toggleShoppingListCheck(input.ingredientId, input.startDate, input.endDate, input.isChecked);
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ message: "Niepoprawne dane" });
+    }
+    await storage.toggleShoppingListCheck(input.data.ingredientId, input.data.startDate, input.data.endDate, input.data.isChecked);
     res.json({ success: true });
   });
 
@@ -588,12 +605,16 @@ export async function registerRoutes(
       amount: z.number().positive().optional(),
       unit: z.string().min(1).optional(),
       category: z.string().min(1).optional(),
-    }).parse(req.body);
-    const extra = await storage.addShoppingListExtra(input.startDate, input.endDate, {
-      name: input.name,
-      amount: input.amount,
-      unit: input.unit,
-      category: input.category,
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ message: "Niepoprawne dane" });
+    }
+    const extra = await storage.addShoppingListExtra(input.data.startDate, input.data.endDate, {
+      name: input.data.name,
+      amount: input.data.amount,
+      unit: input.data.unit,
+      category: input.data.category,
     });
     res.status(201).json(extra);
   });
@@ -614,8 +635,13 @@ export async function registerRoutes(
     const input = z.object({
       startDate: z.string().min(1),
       endDate: z.string().min(1),
-    }).parse(req.query);
-    const excluded = await storage.getShoppingListExcludedItems(input.startDate, input.endDate);
+    }).safeParse(req.query);
+
+    if (!input.success) {
+      return res.json([]);
+    }
+
+    const excluded = await storage.getShoppingListExcludedItems(input.data.startDate, input.data.endDate);
     res.json(excluded);
   });
 
@@ -625,8 +651,12 @@ export async function registerRoutes(
       excluded: z.boolean(),
       startDate: z.string().min(1),
       endDate: z.string().min(1),
-    }).parse(req.body);
-    await storage.setShoppingListExcludedItem(input.ingredientId, input.startDate, input.endDate, input.excluded);
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ message: "Niepoprawne dane" });
+    }
+    await storage.setShoppingListExcludedItem(input.data.ingredientId, input.data.startDate, input.data.endDate, input.data.excluded);
     res.json({ success: true });
   });
 
