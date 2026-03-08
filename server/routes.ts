@@ -537,13 +537,12 @@ export async function registerRoutes(
     const shoppingMap = new Map<number, { name: string, amount: number, unit: string, category: string, unitWeight: number | null }>();
 
     entries.filter((entry) => !entry.isEaten).forEach(entry => {
-      const ingredientsToUse = entry.ingredients.length > 0
-        ? entry.ingredients
-        : (entry.recipe?.ingredients || []);
+      const entryIngredients = (entry.ingredients || []).filter((ri: any) => !!ri?.ingredient);
+      const recipeIngredients = (entry.recipe?.ingredients || []).filter((ri: any) => !!ri?.ingredient);
+      const ingredientsToUse = entryIngredients.length > 0 ? entryIngredients : recipeIngredients;
 
       const occurrenceTracker = new Map<number, number>();
       ingredientsToUse.forEach(ri => {
-        if (!ri.ingredient) return;
         const existing = shoppingMap.get(ri.ingredientId);
         const amount = safeScaledAmount(entry, ri, occurrenceTracker);
         if (existing) {
