@@ -447,8 +447,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMealEntriesRange(startDate: string, endDate: string): Promise<MealEntryWithRecipe[]> {
+    const normalizedStart = String(startDate).slice(0, 10);
+    const normalizedEnd = String(endDate).slice(0, 10);
+
     const entries = await db.query.mealEntries.findMany({
-      where: and(gte(mealEntries.date, startDate), lte(mealEntries.date, endDate)),
       with: {
         recipe: {
           with: {
@@ -471,7 +473,13 @@ export class DatabaseStorage implements IStorage {
         }
       }
     });
-    return entries as MealEntryWithRecipe[];
+
+    const rangedEntries = entries.filter((entry) => {
+      const dateOnly = String(entry.date || "").slice(0, 10);
+      return dateOnly >= normalizedStart && dateOnly <= normalizedEnd;
+    });
+
+    return rangedEntries as MealEntryWithRecipe[];
   }
 
   async getShoppingListChecks(periodStart: string, periodEnd: string): Promise<Record<number, boolean>> {
