@@ -2,7 +2,7 @@ import { useDayPlan, useUpdateMealEntry, useToggleEaten, useAddMealEntry } from 
 import { useIngredients } from "@/hooks/use-ingredients";
 import { useRecipes } from "@/hooks/use-recipes";
 import { useToast } from "@/hooks/use-toast";
-import { format, addDays, subDays } from "date-fns";
+import { format, addDays, subDays, startOfWeek, endOfWeek } from "date-fns";
 import { pl } from "date-fns/locale";
 import { NutritionRing } from "@/components/NutritionRing";
 import { Layout } from "@/components/Layout";
@@ -57,9 +57,16 @@ export default function Dashboard() {
   const { mutate: updateMealEntry, isPending: isSaving } = useUpdateMealEntry();
   const { mutate: addEntry, isPending: isQuickAdding } = useAddMealEntry();
   const { data: recipes } = useRecipes();
+  const weekStart = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
+  const weekEnd = format(endOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
 
   const { data: shoppingListExcludedIds = [] } = useQuery<number[]>({
-    queryKey: ["/api/shopping-list/exclusions"],
+    queryKey: ["/api/shopping-list/exclusions", weekStart, weekEnd],
+    queryFn: async () => {
+      const response = await fetch(`/api/shopping-list/exclusions?startDate=${weekStart}&endDate=${weekEnd}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
   });
 
   const frequentAddonIngredientIds = useMemo(() => new Set(

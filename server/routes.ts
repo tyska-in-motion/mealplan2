@@ -501,9 +501,18 @@ export async function registerRoutes(
   });
 
   app.get(api.mealPlan.getShoppingList.path, async (req, res) => {
-    const { startDate, endDate } = req.query as { startDate: string, endDate: string };
+    const rangeParse = z.object({
+      startDate: z.string().min(1),
+      endDate: z.string().min(1),
+    }).safeParse(req.query);
+
+    if (!rangeParse.success) {
+      return res.status(400).json({ message: "Brak wymaganego zakresu dat" });
+    }
+
+    const { startDate, endDate } = rangeParse.data;
     const entries = await storage.getMealEntriesRange(startDate, endDate);
-    const excludedItems = new Set(await storage.getShoppingListExcludedItems());
+    const excludedItems = new Set(await storage.getShoppingListExcludedItems(startDate, endDate));
 
     const shoppingMap = new Map<number, { name: string, amount: number, unit: string, category: string, unitWeight: number | null }>();
 
@@ -544,7 +553,7 @@ export async function registerRoutes(
       isExcluded: excludedItems.has(id),
     }));
 
-    const extras = await storage.getShoppingListExtras();
+    const extras = await storage.getShoppingListExtras(startDate, endDate);
     const normalizedExtras = extras.map((extra) => ({
       ingredientId: -extra.id,
       extraId: extra.id,
@@ -561,24 +570,52 @@ export async function registerRoutes(
   });
 
   app.get("/api/shopping-list/checks", async (req, res) => {
-    const checks = await storage.getShoppingListChecks();
+    const input = z.object({
+      startDate: z.string().min(1),
+      endDate: z.string().min(1),
+    }).safeParse(req.query);
+
+    if (!input.success) {
+      return res.json({});
+    }
+    const checks = await storage.getShoppingListChecks(input.data.startDate, input.data.endDate);
     res.json(checks);
   });
 
   app.post("/api/shopping-list/checks", async (req, res) => {
-    const { ingredientId, isChecked } = req.body;
-    await storage.toggleShoppingListCheck(Number(ingredientId), Boolean(isChecked));
+    const input = z.object({
+      ingredientId: z.number(),
+      isChecked: z.boolean(),
+      startDate: z.string().min(1),
+      endDate: z.string().min(1),
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ message: "Niepoprawne dane" });
+    }
+    await storage.toggleShoppingListCheck(input.data.ingredientId, input.data.startDate, input.data.endDate, input.data.isChecked);
     res.json({ success: true });
   });
 
   app.post("/api/shopping-list/extras", async (req, res) => {
     const input = z.object({
+      startDate: z.string().min(1),
+      endDate: z.string().min(1),
       name: z.string().min(1),
       amount: z.number().positive().optional(),
       unit: z.string().min(1).optional(),
       category: z.string().min(1).optional(),
-    }).parse(req.body);
-    const extra = await storage.addShoppingListExtra(input);
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ message: "Niepoprawne dane" });
+    }
+    const extra = await storage.addShoppingListExtra(input.data.startDate, input.data.endDate, {
+      name: input.data.name,
+      amount: input.data.amount,
+      unit: input.data.unit,
+      category: input.data.category,
+    });
     res.status(201).json(extra);
   });
 
@@ -594,8 +631,17 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
-  app.get("/api/shopping-list/exclusions", async (_req, res) => {
-    const excluded = await storage.getShoppingListExcludedItems();
+  app.get("/api/shopping-list/exclusions", async (req, res) => {
+    const input = z.object({
+      startDate: z.string().min(1),
+      endDate: z.string().min(1),
+    }).safeParse(req.query);
+
+    if (!input.success) {
+      return res.json([]);
+    }
+
+    const excluded = await storage.getShoppingListExcludedItems(input.data.startDate, input.data.endDate);
     res.json(excluded);
   });
 
@@ -603,8 +649,14 @@ export async function registerRoutes(
     const input = z.object({
       ingredientId: z.number(),
       excluded: z.boolean(),
-    }).parse(req.body);
-    await storage.setShoppingListExcludedItem(input.ingredientId, input.excluded);
+      startDate: z.string().min(1),
+      endDate: z.string().min(1),
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ message: "Niepoprawne dane" });
+    }
+    await storage.setShoppingListExcludedItem(input.data.ingredientId, input.data.startDate, input.data.endDate, input.data.excluded);
     res.json({ success: true });
   });
 

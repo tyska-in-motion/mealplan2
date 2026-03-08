@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { format, addDays, subDays, startOfWeek, eachDayOfInterval } from "date-fns";
+import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
 import { pl } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, X, CheckCircle2, Circle, Minus, Eye, Carrot, Copy, Trash2 } from "lucide-react";
 import { useDayPlan, useAddMealEntry, useDeleteMealEntry, useToggleEaten, useUpdateMealEntry, useCopyDayPlan } from "@/hooks/use-meal-plan";
@@ -77,8 +77,15 @@ export default function MealPlan() {
   const { mutate: updateMealEntry, isPending: isSaving } = useUpdateMealEntry();
   const { mutate: copyDayPlan, isPending: isCopyingDay } = useCopyDayPlan();
   const { data: allAvailableIngredients } = useIngredients();
+  const weekStart = format(startOfWeek(baseDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
+  const weekEnd = format(endOfWeek(baseDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
   const { data: shoppingListExcludedIds = [] } = useQuery<number[]>({
-    queryKey: ["/api/shopping-list/exclusions"],
+    queryKey: ["/api/shopping-list/exclusions", weekStart, weekEnd],
+    queryFn: async () => {
+      const response = await fetch(`/api/shopping-list/exclusions?startDate=${weekStart}&endDate=${weekEnd}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
   });
   const { toast } = useToast();
   

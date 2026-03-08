@@ -38,28 +38,43 @@ export default function ShoppingList() {
   const { data: list, isLoading } = useShoppingList(startStr, endStr);
   
   const { data: checkedItems = {} } = useQuery<Record<number, boolean>>({
-    queryKey: ["/api/shopping-list/checks"],
+    queryKey: ["/api/shopping-list/checks", startStr, endStr],
+    queryFn: async () => {
+      const response = await fetch(`/api/shopping-list/checks?startDate=${startStr}&endDate=${endStr}`);
+      if (!response.ok) throw new Error("Nie udało się pobrać statusów");
+      return response.json();
+    },
     refetchInterval: 3000, // Poll every 3 seconds for multi-device sync
   });
 
   const { data: excludedItems = [] } = useQuery<number[]>({
-    queryKey: ["/api/shopping-list/exclusions"],
+    queryKey: ["/api/shopping-list/exclusions", startStr, endStr],
+    queryFn: async () => {
+      const response = await fetch(`/api/shopping-list/exclusions?startDate=${startStr}&endDate=${endStr}`);
+      if (!response.ok) throw new Error("Nie udało się pobrać wykluczeń");
+      return response.json();
+    },
     refetchInterval: 5000,
   });
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, checked }: { id: number; checked: boolean }) => {
-      await apiRequest("POST", "/api/shopping-list/checks", { ingredientId: id, isChecked: checked });
+      await apiRequest("POST", "/api/shopping-list/checks", {
+        ingredientId: id,
+        isChecked: checked,
+        startDate: startStr,
+        endDate: endStr,
+      });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/checks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/checks", startStr, endStr] });
     }
   });
 
 
   const addExtraMutation = useMutation({
     mutationFn: async ({ name, amount, unit }: { name: string; amount: number; unit: string }) => {
-      await apiRequest("POST", "/api/shopping-list/extras", { name, amount, unit });
+      await apiRequest("POST", "/api/shopping-list/extras", { name, amount, unit, startDate: startStr, endDate: endStr });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
@@ -80,10 +95,15 @@ export default function ShoppingList() {
 
   const toggleExclusionMutation = useMutation({
     mutationFn: async ({ ingredientId, excluded }: { ingredientId: number; excluded: boolean }) => {
-      await apiRequest("POST", "/api/shopping-list/exclusions", { ingredientId, excluded });
+      await apiRequest("POST", "/api/shopping-list/exclusions", {
+        ingredientId,
+        excluded,
+        startDate: startStr,
+        endDate: endStr,
+      });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/exclusions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/exclusions", startStr, endStr] });
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
     }
   });
