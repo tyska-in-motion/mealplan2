@@ -536,7 +536,7 @@ export async function registerRoutes(
 
     const shoppingMap = new Map<number, { name: string, amount: number, unit: string, category: string, unitWeight: number | null }>();
 
-    entries.filter((entry) => !entry.isEaten).forEach(entry => {
+    entries.filter((entry) => entry.isEaten !== true).forEach(entry => {
       const entryIngredients = (entry.ingredients || []).filter((ri: any) => !!ri?.ingredient);
       const recipeIngredients = [
         ...(entry.recipe?.ingredients || []),
@@ -546,12 +546,17 @@ export async function registerRoutes(
 
       const occurrenceTracker = new Map<number, number>();
       ingredientsToUse.forEach(ri => {
-        const existing = shoppingMap.get(ri.ingredientId);
+        const ingredientId = Number(ri?.ingredientId);
+        if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
+          return;
+        }
+
+        const existing = shoppingMap.get(ingredientId);
         const amount = safeScaledAmount(entry, ri, occurrenceTracker);
         if (existing) {
           existing.amount += amount;
         } else {
-          shoppingMap.set(ri.ingredientId, {
+          shoppingMap.set(ingredientId, {
             name: (ri.ingredient as any).name,
             amount,
             unit: "g",
