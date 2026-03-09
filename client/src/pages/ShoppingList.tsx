@@ -3,13 +3,13 @@ import { Layout } from "@/components/Layout";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { useShoppingList } from "@/hooks/use-meal-plan";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { Check, ShoppingCart, Calendar, FileDown, Plus, X } from "lucide-react";
+import { Check, ShoppingCart, Calendar, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { pl } from "date-fns/locale";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, fetchWithTimeout, queryClient } from "@/lib/queryClient";
 
 
 const roundToSingleDecimal = (value: number) => Math.round(value * 10) / 10;
@@ -35,31 +35,64 @@ export default function ShoppingList() {
   const startStr = format(range.start, "yyyy-MM-dd");
   const endStr = format(range.end, "yyyy-MM-dd");
 
-  const { data: list, isLoading } = useShoppingList(startStr, endStr);
+  const { data: list = [], isLoading, isFetching, isError, error, refetch } = useShoppingList(startStr, endStr);
   
   const { data: checkedItems = {} } = useQuery<Record<number, boolean>>({
-    queryKey: ["/api/shopping-list/checks"],
+    queryKey: ["/api/shopping-list/checks", startStr, endStr],
+    queryFn: async () => {
+      const response = await fetchWithTimeout(`/api/shopping-list/checks?startDate=${startStr}&endDate=${endStr}`, {}, 10000);
+      if (!response.ok) throw new Error("Nie udało się pobrać statusów");
+      return response.json();
+    },
     refetchInterval: 3000, // Poll every 3 seconds for multi-device sync
+    placeholderData: (previousData) => previousData ?? {},
   });
 
   const { data: excludedItems = [] } = useQuery<number[]>({
-    queryKey: ["/api/shopping-list/exclusions"],
+    queryKey: ["/api/shopping-list/exclusions", startStr, endStr],
+    queryFn: async () => {
+      const response = await fetchWithTimeout(`/api/shopping-list/exclusions?startDate=${startStr}&endDate=${endStr}`, {}, 10000);
+      if (!response.ok) throw new Error("Nie udało się pobrać wykluczeń");
+      return response.json();
+    },
     refetchInterval: 5000,
+    placeholderData: (previousData) => previousData ?? [],
   });
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, checked }: { id: number; checked: boolean }) => {
-      await apiRequest("POST", "/api/shopping-list/checks", { ingredientId: id, isChecked: checked });
+      await apiRequest("POST", "/api/shopping-list/checks", {
+        ingredientId: id,
+        isChecked: checked,
+        startDate: startStr,
+        endDate: endStr,
+      });
+    },
+    onMutate: async ({ id, checked }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/shopping-list/checks", startStr, endStr] });
+      const previousChecks = queryClient.getQueryData<Record<number, boolean>>(["/api/shopping-list/checks", startStr, endStr]) ?? {};
+
+      queryClient.setQueryData<Record<number, boolean>>(["/api/shopping-list/checks", startStr, endStr], {
+        ...previousChecks,
+        [id]: checked,
+      });
+
+      return { previousChecks };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousChecks) {
+        queryClient.setQueryData(["/api/shopping-list/checks", startStr, endStr], context.previousChecks);
+      }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/checks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/checks", startStr, endStr] });
     }
   });
 
 
   const addExtraMutation = useMutation({
     mutationFn: async ({ name, amount, unit }: { name: string; amount: number; unit: string }) => {
-      await apiRequest("POST", "/api/shopping-list/extras", { name, amount, unit });
+      await apiRequest("POST", "/api/shopping-list/extras", { name, amount, unit, startDate: startStr, endDate: endStr });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
@@ -80,16 +113,40 @@ export default function ShoppingList() {
 
   const toggleExclusionMutation = useMutation({
     mutationFn: async ({ ingredientId, excluded }: { ingredientId: number; excluded: boolean }) => {
-      await apiRequest("POST", "/api/shopping-list/exclusions", { ingredientId, excluded });
+      await apiRequest("POST", "/api/shopping-list/exclusions", {
+        ingredientId,
+        excluded,
+        startDate: startStr,
+        endDate: endStr,
+      });
+    },
+    onMutate: async ({ ingredientId, excluded }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/shopping-list/exclusions", startStr, endStr] });
+
+      const previousExcluded = queryClient.getQueryData<number[]>(["/api/shopping-list/exclusions", startStr, endStr]) ?? [];
+      const nextExcluded = excluded
+        ? Array.from(new Set([...previousExcluded, ingredientId]))
+        : previousExcluded.filter((id) => id !== ingredientId);
+
+      queryClient.setQueryData<number[]>(["/api/shopping-list/exclusions", startStr, endStr], nextExcluded);
+
+      return { previousExcluded };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousExcluded) {
+        queryClient.setQueryData(["/api/shopping-list/exclusions", startStr, endStr], context.previousExcluded);
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/exclusions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/exclusions", startStr, endStr] });
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
     }
   });
 
-  const activeItems = (list || []).filter((item: any) => !item.isExcluded);
-  const excludedFromHomeItems = (list || []).filter((item: any) => !!item.isExcluded);
+  const excludedSet = useMemo(() => new Set(excludedItems), [excludedItems]);
+
+  const activeItems = (list || []).filter((item: any) => item.isExtra || !excludedSet.has(item.ingredientId));
+  const excludedFromHomeItems = (list || []).filter((item: any) => !item.isExtra && excludedSet.has(item.ingredientId));
 
   const sortedActiveItems = useMemo(() => {
     return [...activeItems].sort((a: any, b: any) => {
@@ -242,10 +299,6 @@ export default function ShoppingList() {
               className="h-9 w-40 rounded-lg border-muted"
             />
           </div>
-          <Button onClick={handleExportPdf} className="h-9 rounded-lg px-3 text-xs font-semibold w-full sm:w-auto">
-            <FileDown className="w-4 h-4 mr-2" />
-            Eksportuj PDF
-          </Button>
         </div>
       </div>
 
@@ -271,7 +324,19 @@ export default function ShoppingList() {
         </div>
       </div>
 
-      {isLoading ? <LoadingSpinner /> : (
+      {isFetching && list.length > 0 && (
+        <div className="mb-3 text-xs text-muted-foreground">Odświeżam listę zakupów…</div>
+      )}
+
+      {isLoading && list.length === 0 ? <LoadingSpinner /> : isError && list.length === 0 ? (
+        <div className="bg-white rounded-3xl shadow-sm border border-border/50 p-8 text-center space-y-3">
+          <p className="text-sm text-red-600 font-medium">Nie udało się wczytać listy zakupów.</p>
+          <p className="text-xs text-muted-foreground">{error instanceof Error ? error.message : "Spróbuj ponownie za chwilę."}</p>
+          <Button type="button" variant="outline" onClick={() => refetch()} className="h-9">
+            Spróbuj ponownie
+          </Button>
+        </div>
+      ) : (
         <div className="bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
           <div className="p-6 bg-primary/5 border-b border-border/50 flex items-center justify-between">
             <h2 className="font-bold text-lg flex items-center gap-2">
@@ -403,7 +468,7 @@ export default function ShoppingList() {
       {excludedFromHomeItems.length > 0 && (
         <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
           <div className="p-6 bg-muted/40 border-b border-border/50 flex items-center justify-between">
-            <h2 className="font-bold text-lg">Masz już w domu</h2>
+            <h2 className="font-bold text-lg">Posiadane</h2>
             <span className="text-sm text-muted-foreground">{excludedFromHomeItems.length} pozycji</span>
           </div>
           <div className="divide-y divide-border/50">

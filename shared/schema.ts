@@ -1,5 +1,5 @@
 
-import { pgTable, text, serial, integer, boolean, timestamp, real, date, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, real, date, jsonb, pgEnum, primaryKey } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -37,6 +37,7 @@ export const ingredients = pgTable("ingredients", {
 
 export const userSettings = pgTable("user_settings", {
   id: serial("id").primaryKey(),
+  person: text("person").notNull().default("A"),
   targetCalories: integer("target_calories").notNull().default(2000),
   targetProtein: integer("target_protein").notNull().default(150),
   targetCarbs: integer("target_carbs").notNull().default(200),
@@ -168,13 +169,19 @@ export const mealEntryIngredientsRelations = relations(mealEntryIngredients, ({ 
 }));
 
 export const shoppingListChecks = pgTable("shopping_list_checks", {
-  ingredientId: integer("ingredient_id").primaryKey(),
+  ingredientId: integer("ingredient_id").notNull(),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
   isChecked: boolean("is_checked").notNull().default(false),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  pk: primaryKey({ columns: [table.ingredientId, table.periodStart, table.periodEnd] }),
+}));
 
 export const shoppingListExtras = pgTable("shopping_list_extras", {
   id: serial("id").primaryKey(),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
   name: text("name").notNull(),
   amount: real("amount").notNull().default(1),
   unit: text("unit").notNull().default("szt"),
@@ -184,9 +191,13 @@ export const shoppingListExtras = pgTable("shopping_list_extras", {
 });
 
 export const shoppingListExcludedItems = pgTable("shopping_list_excluded_items", {
-  ingredientId: integer("ingredient_id").primaryKey(),
+  ingredientId: integer("ingredient_id").notNull(),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  pk: primaryKey({ columns: [table.ingredientId, table.periodStart, table.periodEnd] }),
+}));
 
 // === SCHEMAS & TYPES ===
 

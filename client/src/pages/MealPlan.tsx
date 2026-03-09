@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { format, addDays, subDays, startOfWeek, eachDayOfInterval } from "date-fns";
+import { format, addDays, subDays, eachDayOfInterval } from "date-fns";
 import { pl } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, X, CheckCircle2, Circle, Minus, Eye, Carrot, Copy, Trash2 } from "lucide-react";
 import { useDayPlan, useAddMealEntry, useDeleteMealEntry, useToggleEaten, useUpdateMealEntry, useCopyDayPlan } from "@/hooks/use-meal-plan";
@@ -46,7 +46,7 @@ export default function MealPlan() {
   }, [location]);
   
   const weekDays = useMemo(() => {
-    const start = startOfWeek(baseDate, { weekStartsOn: 1 });
+    const start = baseDate;
     return eachDayOfInterval({
       start,
       end: addDays(start, 6)
@@ -77,8 +77,15 @@ export default function MealPlan() {
   const { mutate: updateMealEntry, isPending: isSaving } = useUpdateMealEntry();
   const { mutate: copyDayPlan, isPending: isCopyingDay } = useCopyDayPlan();
   const { data: allAvailableIngredients } = useIngredients();
+  const weekStart = format(weekDays[0], "yyyy-MM-dd");
+  const weekEnd = format(weekDays[6], "yyyy-MM-dd");
   const { data: shoppingListExcludedIds = [] } = useQuery<number[]>({
-    queryKey: ["/api/shopping-list/exclusions"],
+    queryKey: ["/api/shopping-list/exclusions", weekStart, weekEnd],
+    queryFn: async () => {
+      const response = await fetch(`/api/shopping-list/exclusions?startDate=${weekStart}&endDate=${weekEnd}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
   });
   const { toast } = useToast();
   
@@ -1404,12 +1411,27 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
           });
         }
 
-        const addonTotals = collectFrequentAddonAmounts(pair.A);
-        collectFrequentAddonAmounts(pair.B).forEach((addon, ingredientId) => {
+        const addonsA = collectFrequentAddonAmounts(pair.A);
+        const addonsB = collectFrequentAddonAmounts(pair.B);
+        const addonTotals = new Map<number, { amount: number; ingredient: any; byPerson: { A: number; B: number } }>();
+
+        addonsA.forEach((addon, ingredientId) => {
+          addonTotals.set(ingredientId, {
+            amount: addon.amount,
+            ingredient: addon.ingredient || null,
+            byPerson: { A: addon.amount, B: 0 },
+          });
+        });
+
+        addonsB.forEach((addon, ingredientId) => {
           const existing = addonTotals.get(ingredientId);
           addonTotals.set(ingredientId, {
             amount: (existing?.amount || 0) + addon.amount,
             ingredient: existing?.ingredient || addon.ingredient || null,
+            byPerson: {
+              A: existing?.byPerson?.A || 0,
+              B: (existing?.byPerson?.B || 0) + addon.amount,
+            },
           });
         });
 
@@ -1419,6 +1441,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
             const nextAmount = (Number(existingIngredient.amount) || 0) + addon.amount;
             existingIngredient.amount = nextAmount;
             existingIngredient.calculatedAmount = nextAmount;
+            existingIngredient.sharedAddonAmounts = addon.byPerson;
             if (!existingIngredient.ingredient && addon.ingredient) {
               existingIngredient.ingredient = addon.ingredient;
             }
@@ -1432,6 +1455,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
             ingredient: addon.ingredient,
             scalingType: "FIXED",
             baseAmount: addon.amount,
+            sharedAddonAmounts: addon.byPerson,
           });
         });
 
@@ -1565,17 +1589,11 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
           {sharedEntries.length > 0 && (
             <div id="shared-meals" className="space-y-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-3">
               <div className="text-sm font-bold text-emerald-800 uppercase tracking-wider">Wspólne posiłki (Tysia + Mati)</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
                 {sharedEntries.map((shared: any, idx: number) => (
-                  <div key={`shared-${shared.mealType}-${shared.recipe?.id}-${idx}`} className="rounded-xl border border-emerald-200 bg-white p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                          {shared.mealType === "breakfast" ? "Śniadanie" : shared.mealType === "lunch" ? "Obiad" : shared.mealType === "dinner" ? "Kolacja" : "Przekąska"}
-                        </p>
-                        <p className="font-semibold truncate">{shared.recipe?.name}</p>
-                        <p className="text-xs text-muted-foreground">Łącznie: {shared.servings} porcji</p>
-                      </div>
+                  <div key={`shared-${shared.mealType}-${shared.recipe?.id}-${idx}`} className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-sm truncate">{shared.recipe?.name}</p>
                       <button
                         onClick={() => onViewPlannedRecipe(shared.recipe, { ...shared.entryA, servings: shared.servings, ingredients: shared.ingredients }, { shared: true })}
                         className="text-muted-foreground hover:text-primary transition-colors"

@@ -2,9 +2,8 @@ import { useDayPlan, useUpdateMealEntry, useToggleEaten, useAddMealEntry } from 
 import { useIngredients } from "@/hooks/use-ingredients";
 import { useRecipes } from "@/hooks/use-recipes";
 import { useToast } from "@/hooks/use-toast";
-import { format, addDays, subDays } from "date-fns";
+import { format, addDays, subDays, startOfWeek, endOfWeek } from "date-fns";
 import { pl } from "date-fns/locale";
-import { NutritionRing } from "@/components/NutritionRing";
 import { Layout } from "@/components/Layout";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Flame, CheckCircle2, Circle, CalendarDays, ChevronLeft, ChevronRight, Settings2, Wallet, Eye, Check, ChevronsUpDown, X, PlusCircle } from "lucide-react";
@@ -14,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { api } from "@shared/routes";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,6 +24,7 @@ import { calculateScaledAmount } from "@shared/scaling";
 
 export default function Dashboard() {
   type PersonTargets = { calories: number; protein: number; carbs: number; fat: number };
+  type MacroStats = { calories: number; protein: number; carbs: number; fat: number };
   const [date, setDate] = useState(new Date());
   const dateStr = format(date, "yyyy-MM-dd");
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -57,9 +57,16 @@ export default function Dashboard() {
   const { mutate: updateMealEntry, isPending: isSaving } = useUpdateMealEntry();
   const { mutate: addEntry, isPending: isQuickAdding } = useAddMealEntry();
   const { data: recipes } = useRecipes();
+  const weekStart = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
+  const weekEnd = format(endOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
 
   const { data: shoppingListExcludedIds = [] } = useQuery<number[]>({
-    queryKey: ["/api/shopping-list/exclusions"],
+    queryKey: ["/api/shopping-list/exclusions", weekStart, weekEnd],
+    queryFn: async () => {
+      const response = await fetch(`/api/shopping-list/exclusions?startDate=${weekStart}&endDate=${weekEnd}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
   });
 
   const frequentAddonIngredientIds = useMemo(() => new Set(
@@ -276,10 +283,18 @@ export default function Dashboard() {
   useEffect(() => {
     if (!settings) return;
     const baseTargets = {
-      calories: settings.targetCalories ?? 2000,
-      protein: settings.targetProtein ?? 150,
-      carbs: settings.targetCarbs ?? 200,
-      fat: settings.targetFat ?? 65,
+      A: {
+        calories: settings?.A?.targetCalories ?? 2000,
+        protein: settings?.A?.targetProtein ?? 150,
+        carbs: settings?.A?.targetCarbs ?? 200,
+        fat: settings?.A?.targetFat ?? 65,
+      },
+      B: {
+        calories: settings?.B?.targetCalories ?? settings?.A?.targetCalories ?? 2000,
+        protein: settings?.B?.targetProtein ?? settings?.A?.targetProtein ?? 150,
+        carbs: settings?.B?.targetCarbs ?? settings?.A?.targetCarbs ?? 200,
+        fat: settings?.B?.targetFat ?? settings?.A?.targetFat ?? 65,
+      },
     };
 
     let localOverrides: any = {};
@@ -291,16 +306,16 @@ export default function Dashboard() {
 
     setTargetsByPerson({
       A: {
-        calories: Number(localOverrides?.A?.calories ?? baseTargets.calories),
-        protein: Number(localOverrides?.A?.protein ?? baseTargets.protein),
-        carbs: Number(localOverrides?.A?.carbs ?? baseTargets.carbs),
-        fat: Number(localOverrides?.A?.fat ?? baseTargets.fat),
+        calories: Number(localOverrides?.A?.calories ?? baseTargets.A.calories),
+        protein: Number(localOverrides?.A?.protein ?? baseTargets.A.protein),
+        carbs: Number(localOverrides?.A?.carbs ?? baseTargets.A.carbs),
+        fat: Number(localOverrides?.A?.fat ?? baseTargets.A.fat),
       },
       B: {
-        calories: Number(localOverrides?.B?.calories ?? baseTargets.calories),
-        protein: Number(localOverrides?.B?.protein ?? baseTargets.protein),
-        carbs: Number(localOverrides?.B?.carbs ?? baseTargets.carbs),
-        fat: Number(localOverrides?.B?.fat ?? baseTargets.fat),
+        calories: Number(localOverrides?.B?.calories ?? baseTargets.B.calories),
+        protein: Number(localOverrides?.B?.protein ?? baseTargets.B.protein),
+        carbs: Number(localOverrides?.B?.carbs ?? baseTargets.B.carbs),
+        fat: Number(localOverrides?.B?.fat ?? baseTargets.B.fat),
       },
     });
   }, [settings]);
@@ -319,7 +334,7 @@ export default function Dashboard() {
   const allEntries = dayPlan?.entries || [];
   const personName: Record<string, string> = { A: "Tysia", B: "Mati" };
 
-  const calculateConsumed = (entries: any[]) => {
+  const calculateConsumed = (entries: any[]): MacroStats => {
     const eatenEntries = entries.filter((e: any) => e.isEaten) || [];
 
     return eatenEntries.reduce((acc: any, entry: any) => {
@@ -357,38 +372,8 @@ export default function Dashboard() {
   };
 
 
-  const recommendedRecipes = useMemo(() => {
-    const availableIds = new Set<number>([
-      ...(allAvailableIngredients || [])
-        .filter((ingredient: any) => ingredient.alwaysAtHome)
-        .map((ingredient: any) => Number(ingredient.id)),
-      ...(shoppingListExcludedIds || []).map((id) => Number(id)),
-    ]);
-
-    const candidates = (recipes || [])
-      .map((recipe: any) => {
-        const ingredientIds = Array.from(new Set<number>((recipe.ingredients || []).map((ri: any) => Number(ri.ingredientId)).filter((id: number) => id > 0)));
-        if (ingredientIds.length === 0) return null;
-        const availableCount = ingredientIds.filter((id: number) => availableIds.has(id)).length;
-        const coverage = availableCount / ingredientIds.length;
-        return coverage > 0.5 ? { recipe, coverage } : null;
-      })
-      .filter(Boolean) as { recipe: any; coverage: number }[];
-
-    const seed = Number(dateStr.replace(/-/g, "")) || 1;
-    const seeded = [...candidates].sort((a, b) => {
-      const aSeed = (a.recipe.id * 9301 + seed * 49297) % 233280;
-      const bSeed = (b.recipe.id * 9301 + seed * 49297) % 233280;
-      if (aSeed !== bSeed) return aSeed - bSeed;
-      return b.coverage - a.coverage;
-    });
-
-    return seeded.slice(0, 5);
-  }, [allAvailableIngredients, shoppingListExcludedIds, recipes, dateStr]);
-
   if (isLoadingPlan || isLoadingSettings) return <Layout><LoadingSpinner /></Layout>;
 
-  const consumed = calculateConsumed(allEntries);
   const consumedA = calculateConsumed(allEntries.filter((e: any) => (e.person || "A") === "A"));
   const consumedB = calculateConsumed(allEntries.filter((e: any) => (e.person || "A") === "B"));
 
@@ -424,16 +409,53 @@ export default function Dashboard() {
     setTargetsByPerson(next);
     localStorage.setItem("dashboard-person-targets", JSON.stringify(next));
 
-    if (person === "A") {
-      const mapKey: Record<keyof PersonTargets, string> = {
-        calories: "targetCalories",
-        protein: "targetProtein",
-        carbs: "targetCarbs",
-        fat: "targetFat",
-      };
-      updateSettingsMutation.mutate({ [mapKey[key]]: Number(value) || 0 });
-    }
+    const mapKey: Record<keyof PersonTargets, string> = {
+      calories: "targetCalories",
+      protein: "targetProtein",
+      carbs: "targetCarbs",
+      fat: "targetFat",
+    };
+    updateSettingsMutation.mutate({ person, [mapKey[key]]: Number(value) || 0 });
   };
+
+  const macrosConfig: { key: keyof MacroStats; label: string; unit: string; barClassName: string }[] = [
+    { key: "calories", label: "Kcal", unit: "kcal", barClassName: "bg-primary" },
+    { key: "protein", label: "Białko", unit: "g", barClassName: "bg-blue-500" },
+    { key: "fat", label: "Tłuszcze", unit: "g", barClassName: "bg-rose-500" },
+    { key: "carbs", label: "Węglowodany", unit: "g", barClassName: "bg-amber-500" },
+  ];
+
+  const getProgressValue = (current: number, target: number) => {
+    if (target <= 0) return 0;
+    return Math.min((current / target) * 100, 100);
+  };
+
+  const renderMacroTiles = (title: string, consumedPerson: MacroStats, targets: PersonTargets) => (
+    <div className="rounded-2xl border border-border/50 bg-white p-4 md:p-5 shadow-sm">
+      <p className="mb-4 text-sm font-semibold text-foreground">{title}</p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {macrosConfig.map((macro) => (
+          <div key={macro.key} className="rounded-xl border border-border/60 bg-card p-3">
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <p className="text-sm font-semibold text-foreground">{macro.label}</p>
+              <p className="text-xs text-muted-foreground">
+                {Math.round(consumedPerson[macro.key])} / {Math.round(targets[macro.key])} {macro.unit}
+              </p>
+            </div>
+            <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className={cn("h-full rounded-full transition-all duration-500", macro.barClassName)}
+                style={{ width: `${getProgressValue(consumedPerson[macro.key], targets[macro.key])}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {Math.round(getProgressValue(consumedPerson[macro.key], targets[macro.key]))}% celu
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
 
   const getServingInputKey = (entry: any) => `${entry.id}-${entry.person || "A"}`;
@@ -556,6 +578,7 @@ export default function Dashboard() {
             <DialogContent className="max-w-xl bg-white">
               <DialogHeader>
                 <DialogTitle>Szybko dodaj zjedzony posiłek</DialogTitle>
+                <DialogDescription>Wybierz osobę i dodaj zjedzony posiłek z przepisu lub jako własny wpis.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
                 <div className="grid grid-cols-2 gap-3">
@@ -651,6 +674,7 @@ export default function Dashboard() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Ustawienia celów (osobno dla każdej osoby)</DialogTitle>
+                <DialogDescription>Ustaw dzienne cele kalorii i makroskładników niezależnie dla Tysi oraz Matiego.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 {(["A", "B"] as const).map((person) => (
@@ -722,24 +746,8 @@ export default function Dashboard() {
       </header>
 
       <div className="space-y-4 mb-8">
-        <div className="bg-white rounded-2xl p-4 border border-border/50">
-          <p className="text-sm font-semibold mb-3">Tysia</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <NutritionRing current={consumedA.calories} target={targetsByPerson.A.calories} label="Kalorie" color="hsl(var(--primary))" unit="kcal" />
-            <NutritionRing current={consumedA.protein} target={targetsByPerson.A.protein} label="Białko" color="#3b82f6" unit="g" />
-            <NutritionRing current={consumedA.carbs} target={targetsByPerson.A.carbs} label="Węgle" color="#f59e0b" unit="g" />
-            <NutritionRing current={consumedA.fat} target={targetsByPerson.A.fat} label="Tłuszcze" color="#ef4444" unit="g" />
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl p-4 border border-border/50">
-          <p className="text-sm font-semibold mb-3">Mati</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <NutritionRing current={consumedB.calories} target={targetsByPerson.B.calories} label="Kalorie" color="hsl(var(--primary))" unit="kcal" />
-            <NutritionRing current={consumedB.protein} target={targetsByPerson.B.protein} label="Białko" color="#3b82f6" unit="g" />
-            <NutritionRing current={consumedB.carbs} target={targetsByPerson.B.carbs} label="Węgle" color="#f59e0b" unit="g" />
-            <NutritionRing current={consumedB.fat} target={targetsByPerson.B.fat} label="Tłuszcze" color="#ef4444" unit="g" />
-          </div>
-        </div>
+        {renderMacroTiles("Tysia", consumedA, targetsByPerson.A)}
+        {renderMacroTiles("Mati", consumedB, targetsByPerson.B)}
       </div>
 
       <RecipeView 
@@ -759,34 +767,6 @@ export default function Dashboard() {
         showFooter={false}
         onAddToPlan={() => {}} 
       />
-
-
-      <div className="bg-white rounded-2xl p-5 border border-border/50 shadow-sm mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl font-bold">Polecane przepisy na dziś</h2>
-          <span className="text-xs text-muted-foreground">Losowane codziennie • {">"}50% składników</span>
-        </div>
-        {recommendedRecipes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Brak propozycji — oznacz więcej składników jako "zawsze mam w domu".</p>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            {recommendedRecipes.map(({ recipe, coverage }) => (
-              <button
-                key={recipe.id}
-                className="text-left rounded-xl border p-3 hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                onClick={() => {
-                  setViewingRecipe(recipe);
-                  setViewingMeal(null);
-                  setViewingPlannedServings(undefined);
-                }}
-              >
-                <p className="font-semibold text-sm line-clamp-2">{recipe.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">Dostępność: {Math.round(coverage * 100)}%</p>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -946,6 +926,7 @@ export default function Dashboard() {
         <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col bg-white">
           <DialogHeader>
             <DialogTitle>Edytuj składniki posiłku</DialogTitle>
+            <DialogDescription>Dostosuj składniki i ilości dla wybranego posiłku.</DialogDescription>
           </DialogHeader>
           
           <div className="flex-1 overflow-y-auto py-4 space-y-4">

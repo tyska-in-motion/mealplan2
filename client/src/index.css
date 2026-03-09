@@ -44,6 +44,8 @@
   body {
     @apply bg-background text-foreground font-body antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-display font-bold tracking-tight;
@@ -77,4 +79,10 @@
 
 .glass-card {
   @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+}
+
+@media (max-width: 768px) {
+  html, body {
+    overscroll-behavior-y: none;
+  }
 }
