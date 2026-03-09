@@ -60,25 +60,46 @@ export interface IStorage {
   setShoppingListExcludedItem(ingredientId: number, periodStart: string, periodEnd: string, excluded: boolean): Promise<void>;
 
   // User Settings
-  getUserSettings(): Promise<UserSettings>;
-  updateUserSettings(settings: Partial<UserSettings>): Promise<UserSettings>;
+  getUserSettings(): Promise<Record<"A" | "B", UserSettings>>;
+  updateUserSettings(person: "A" | "B", settings: Partial<UserSettings>): Promise<UserSettings>;
 }
 
 export class DatabaseStorage implements IStorage {
-  async getUserSettings(): Promise<UserSettings> {
-    const [settings] = await db.select().from(userSettings);
-    if (!settings) {
-      const [newSettings] = await db.insert(userSettings).values({}).returning();
-      return newSettings;
+  async getUserSettings(): Promise<Record<"A" | "B", UserSettings>> {
+    const allSettings = await db.select().from(userSettings);
+
+    const byPerson = new Map<string, UserSettings>();
+    for (const setting of allSettings) {
+      byPerson.set(setting.person || "A", setting);
     }
-    return settings;
+
+    for (const person of ["A", "B"] as const) {
+      if (!byPerson.has(person)) {
+        const seed = byPerson.get("A") || byPerson.get("B");
+        const [created] = await db.insert(userSettings).values({
+          person,
+          targetCalories: seed?.targetCalories ?? 2000,
+          targetProtein: seed?.targetProtein ?? 150,
+          targetCarbs: seed?.targetCarbs ?? 200,
+          targetFat: seed?.targetFat ?? 65,
+        }).returning();
+        byPerson.set(person, created);
+      }
+    }
+
+    return {
+      A: byPerson.get("A") as UserSettings,
+      B: byPerson.get("B") as UserSettings,
+    };
   }
 
-  async updateUserSettings(updates: Partial<UserSettings>): Promise<UserSettings> {
+  async updateUserSettings(person: "A" | "B", updates: Partial<UserSettings>): Promise<UserSettings> {
     const current = await this.getUserSettings();
+    const currentPerson = current[person];
+
     const [updated] = await db.update(userSettings)
       .set(updates)
-      .where(eq(userSettings.id, current.id))
+      .where(eq(userSettings.id, currentPerson.id))
       .returning();
     return updated;
   }

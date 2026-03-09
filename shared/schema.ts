@@ -37,6 +37,7 @@ export const ingredients = pgTable("ingredients", {
 
 export const userSettings = pgTable("user_settings", {
   id: serial("id").primaryKey(),
+  person: text("person").notNull().default("A"),
   targetCalories: integer("target_calories").notNull().default(2000),
   targetProtein: integer("target_protein").notNull().default(150),
   targetCarbs: integer("target_carbs").notNull().default(200),

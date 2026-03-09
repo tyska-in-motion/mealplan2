@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { api } from "@shared/routes";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -283,10 +283,18 @@ export default function Dashboard() {
   useEffect(() => {
     if (!settings) return;
     const baseTargets = {
-      calories: settings.targetCalories ?? 2000,
-      protein: settings.targetProtein ?? 150,
-      carbs: settings.targetCarbs ?? 200,
-      fat: settings.targetFat ?? 65,
+      A: {
+        calories: settings?.A?.targetCalories ?? 2000,
+        protein: settings?.A?.targetProtein ?? 150,
+        carbs: settings?.A?.targetCarbs ?? 200,
+        fat: settings?.A?.targetFat ?? 65,
+      },
+      B: {
+        calories: settings?.B?.targetCalories ?? settings?.A?.targetCalories ?? 2000,
+        protein: settings?.B?.targetProtein ?? settings?.A?.targetProtein ?? 150,
+        carbs: settings?.B?.targetCarbs ?? settings?.A?.targetCarbs ?? 200,
+        fat: settings?.B?.targetFat ?? settings?.A?.targetFat ?? 65,
+      },
     };
 
     let localOverrides: any = {};
@@ -298,16 +306,16 @@ export default function Dashboard() {
 
     setTargetsByPerson({
       A: {
-        calories: Number(localOverrides?.A?.calories ?? baseTargets.calories),
-        protein: Number(localOverrides?.A?.protein ?? baseTargets.protein),
-        carbs: Number(localOverrides?.A?.carbs ?? baseTargets.carbs),
-        fat: Number(localOverrides?.A?.fat ?? baseTargets.fat),
+        calories: Number(localOverrides?.A?.calories ?? baseTargets.A.calories),
+        protein: Number(localOverrides?.A?.protein ?? baseTargets.A.protein),
+        carbs: Number(localOverrides?.A?.carbs ?? baseTargets.A.carbs),
+        fat: Number(localOverrides?.A?.fat ?? baseTargets.A.fat),
       },
       B: {
-        calories: Number(localOverrides?.B?.calories ?? baseTargets.calories),
-        protein: Number(localOverrides?.B?.protein ?? baseTargets.protein),
-        carbs: Number(localOverrides?.B?.carbs ?? baseTargets.carbs),
-        fat: Number(localOverrides?.B?.fat ?? baseTargets.fat),
+        calories: Number(localOverrides?.B?.calories ?? baseTargets.B.calories),
+        protein: Number(localOverrides?.B?.protein ?? baseTargets.B.protein),
+        carbs: Number(localOverrides?.B?.carbs ?? baseTargets.B.carbs),
+        fat: Number(localOverrides?.B?.fat ?? baseTargets.B.fat),
       },
     });
   }, [settings]);
@@ -401,15 +409,13 @@ export default function Dashboard() {
     setTargetsByPerson(next);
     localStorage.setItem("dashboard-person-targets", JSON.stringify(next));
 
-    if (person === "A") {
-      const mapKey: Record<keyof PersonTargets, string> = {
-        calories: "targetCalories",
-        protein: "targetProtein",
-        carbs: "targetCarbs",
-        fat: "targetFat",
-      };
-      updateSettingsMutation.mutate({ [mapKey[key]]: Number(value) || 0 });
-    }
+    const mapKey: Record<keyof PersonTargets, string> = {
+      calories: "targetCalories",
+      protein: "targetProtein",
+      carbs: "targetCarbs",
+      fat: "targetFat",
+    };
+    updateSettingsMutation.mutate({ person, [mapKey[key]]: Number(value) || 0 });
   };
 
   const macrosConfig: { key: keyof MacroStats; label: string; unit: string; barClassName: string }[] = [
@@ -572,6 +578,7 @@ export default function Dashboard() {
             <DialogContent className="max-w-xl bg-white">
               <DialogHeader>
                 <DialogTitle>Szybko dodaj zjedzony posiłek</DialogTitle>
+                <DialogDescription>Wybierz osobę i dodaj zjedzony posiłek z przepisu lub jako własny wpis.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
                 <div className="grid grid-cols-2 gap-3">
@@ -667,6 +674,7 @@ export default function Dashboard() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Ustawienia celów (osobno dla każdej osoby)</DialogTitle>
+                <DialogDescription>Ustaw dzienne cele kalorii i makroskładników niezależnie dla Tysi oraz Matiego.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 {(["A", "B"] as const).map((person) => (
@@ -918,6 +926,7 @@ export default function Dashboard() {
         <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col bg-white">
           <DialogHeader>
             <DialogTitle>Edytuj składniki posiłku</DialogTitle>
+            <DialogDescription>Dostosuj składniki i ilości dla wybranego posiłku.</DialogDescription>
           </DialogHeader>
           
           <div className="flex-1 overflow-y-auto py-4 space-y-4">
