@@ -412,25 +412,38 @@ export default function Dashboard() {
     }
   };
 
-  const macrosConfig: { key: keyof MacroStats; label: string; unit: string }[] = [
-    { key: "calories", label: "Kcal", unit: "kcal" },
-    { key: "protein", label: "Białka", unit: "g" },
-    { key: "fat", label: "Tł.", unit: "g" },
-    { key: "carbs", label: "Węgl.", unit: "g" },
+  const macrosConfig: { key: keyof MacroStats; label: string; unit: string; barClassName: string }[] = [
+    { key: "calories", label: "Kcal", unit: "kcal", barClassName: "bg-primary" },
+    { key: "protein", label: "Białko", unit: "g", barClassName: "bg-blue-500" },
+    { key: "fat", label: "Tłuszcze", unit: "g", barClassName: "bg-rose-500" },
+    { key: "carbs", label: "Węglowodany", unit: "g", barClassName: "bg-amber-500" },
   ];
 
+  const getProgressValue = (current: number, target: number) => {
+    if (target <= 0) return 0;
+    return Math.min((current / target) * 100, 100);
+  };
+
   const renderMacroTiles = (title: string, consumedPerson: MacroStats, targets: PersonTargets) => (
-    <div className="rounded-2xl border border-border/30 bg-[#2f2f33] p-4 md:p-5 shadow-sm">
-      <p className="mb-3 text-sm font-semibold text-zinc-100">{title}</p>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="rounded-2xl border border-border/50 bg-white p-4 md:p-5 shadow-sm">
+      <p className="mb-4 text-sm font-semibold text-foreground">{title}</p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         {macrosConfig.map((macro) => (
-          <div key={macro.key} className="rounded-xl bg-[#3a3a3f] p-3 text-zinc-100">
-            <div className="mb-3 h-3 w-full rounded-full bg-[#1d1d21]" />
-            <p className="text-2xl font-semibold leading-none">
-              {macro.label} <span>{Math.round(consumedPerson[macro.key])}</span>
-            </p>
-            <p className="mt-1 text-2xl leading-none text-zinc-400">
-              /{Math.round(targets[macro.key])} {macro.unit}
+          <div key={macro.key} className="rounded-xl border border-border/60 bg-card p-3">
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <p className="text-sm font-semibold text-foreground">{macro.label}</p>
+              <p className="text-xs text-muted-foreground">
+                {Math.round(consumedPerson[macro.key])} / {Math.round(targets[macro.key])} {macro.unit}
+              </p>
+            </div>
+            <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className={cn("h-full rounded-full transition-all duration-500", macro.barClassName)}
+                style={{ width: `${getProgressValue(consumedPerson[macro.key], targets[macro.key])}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {Math.round(getProgressValue(consumedPerson[macro.key], targets[macro.key]))}% celu
             </p>
           </div>
         ))}
