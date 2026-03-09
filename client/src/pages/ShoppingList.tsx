@@ -180,9 +180,7 @@ export default function ShoppingList() {
     }, {});
 
   const uncheckedGroupedList = groupByCategory(uncheckedActiveItems);
-  const checkedGroupedList = groupByCategory(checkedActiveItems);
   const uncheckedCategories = Object.keys(uncheckedGroupedList).sort();
-  const checkedCategories = Object.keys(checkedGroupedList).sort();
 
   const toggleCheck = (item: any) => {
     if (item.isExtra) {
@@ -222,7 +220,57 @@ export default function ShoppingList() {
     });
   };
 
+  const handleExportPdf = () => {
+    const printWindow = window.open("", "_blank", "width=900,height=1200");
+    if (!printWindow) return;
 
+    const printDate = format(new Date(), "yyyy-MM-dd HH:mm");
+    const groupedListForExport = groupByCategory(sortedActiveItems);
+    const categoriesForExport = Object.keys(groupedListForExport).sort();
+
+    const content = categoriesForExport
+      .map((category) => {
+        const rows = groupedListForExport[category]
+          .map((item: any) => {
+            const isChecked = checkedItems[item.ingredientId] ? "✓" : "☐";
+            return `<tr>
+              <td style="padding: 6px 8px; border-bottom: 1px solid #eee; width: 30px;">${isChecked}</td>
+              <td style="padding: 6px 8px; border-bottom: 1px solid #eee;">${item.name}</td>
+              <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right; white-space: nowrap;">${formatAmount(item.totalAmount)} ${item.unit}</td>
+            </tr>`;
+          })
+          .join("");
+
+        return `
+          <section style="margin-bottom: 18px;">
+            <h2 style="font-size: 14px; text-transform: uppercase; color: #6b7280; margin: 0 0 8px;">${category}</h2>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tbody>${rows}</tbody>
+            </table>
+          </section>
+        `;
+      })
+      .join("");
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Lista zakupów ${startStr} - ${endStr}</title>
+        </head>
+        <body style="font-family: Inter, Arial, sans-serif; margin: 24px; color: #111827;">
+          <h1 style="margin-bottom: 4px;">Lista zakupów</h1>
+          <p style="margin-top: 0; color: #6b7280;">
+            Okres: ${format(range.start, "d MMMM yyyy", { locale: pl })} - ${format(range.end, "d MMMM yyyy", { locale: pl })}<br/>
+            Wygenerowano: ${printDate}
+          </p>
+          ${content || '<p>Brak produktów dla wybranego okresu.</p>'}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
 
   return (
     <Layout>
@@ -377,48 +425,42 @@ export default function ShoppingList() {
                     </div>
                   </div>
                 ))}
-
-                {checkedActiveItems.length > 0 && (
-                  <div className="bg-muted/10 border-t border-border/50">
-                    <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/40 border-b border-border/50">
-                      Kupione
-                    </div>
-                    {checkedCategories.map((category) => (
-                      <div key={`checked-${category}`}>
-                        <div className="px-4 py-1 text-[10px] uppercase tracking-wider text-muted-foreground/80 bg-muted/20 border-b border-border/30">
-                          {category}
-                        </div>
-                        <div className="divide-y divide-border/40">
-                          {checkedGroupedList[category].map((item: any) => {
-                            const isChecked = item.isExtra ? item.isChecked : checkedItems[item.ingredientId];
-                            return (
-                              <div
-                                key={item.isExtra ? `checked-extra-${item.extraId}` : `checked-ingredient-${item.ingredientId}`}
-                                onClick={() => toggleCheck(item)}
-                                className="py-2 px-3 flex items-center justify-between hover:bg-muted/20 cursor-pointer transition-colors group bg-muted/10"
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <div className={cn(
-                                    "w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0",
-                                    isChecked ? "bg-primary border-primary" : "border-muted-foreground/30 group-hover:border-primary"
-                                  )}>
-                                    {isChecked && <Check className="w-3 h-3 text-white" />}
-                                  </div>
-                                  <span className="text-sm font-medium text-muted-foreground line-through decoration-border truncate">{item.name}</span>
-                                </div>
-                                <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded shrink-0 ml-2">
-                                  {formatAmount(item.totalAmount)} {item.unit}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {checkedActiveItems.length > 0 && (
+        <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
+          <div className="px-4 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+            <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Kupione</h2>
+            <span className="text-xs text-muted-foreground">{checkedActiveItems.length} pozycji</span>
+          </div>
+          <div className="divide-y divide-border/40">
+            {checkedActiveItems.map((item: any) => {
+              const isChecked = item.isExtra ? item.isChecked : checkedItems[item.ingredientId];
+              return (
+                <div
+                  key={item.isExtra ? `checked-extra-${item.extraId}` : `checked-ingredient-${item.ingredientId}`}
+                  onClick={() => toggleCheck(item)}
+                  className="py-2 px-3 flex items-center justify-between hover:bg-muted/20 cursor-pointer transition-colors group bg-muted/10"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={cn(
+                      "w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0",
+                      isChecked ? "bg-primary border-primary" : "border-muted-foreground/30 group-hover:border-primary"
+                    )}>
+                      {isChecked && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <span className="text-sm font-medium text-muted-foreground line-through decoration-border truncate">{item.name}</span>
+                  </div>
+                  <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded shrink-0 ml-2">
+                    {formatAmount(item.totalAmount)} {item.unit}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

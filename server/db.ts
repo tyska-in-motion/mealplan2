@@ -24,6 +24,31 @@ export async function ensureDbCompat() {
   await pool.query(`UPDATE meal_entries SET person = 'A' WHERE person IS NULL`);
   await pool.query(`ALTER TABLE meal_entries ALTER COLUMN person SET NOT NULL`);
 
+  await pool.query(`CREATE TABLE IF NOT EXISTS user_settings (
+    id serial PRIMARY KEY,
+    target_calories integer NOT NULL DEFAULT 2000,
+    target_protein integer NOT NULL DEFAULT 150,
+    target_carbs integer NOT NULL DEFAULT 200,
+    target_fat integer NOT NULL DEFAULT 65
+  )`);
+
+  await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS target_calories integer DEFAULT 2000`);
+  await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS target_protein integer DEFAULT 150`);
+  await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS target_carbs integer DEFAULT 200`);
+  await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS target_fat integer DEFAULT 65`);
+  await pool.query(`UPDATE user_settings SET target_calories = 2000 WHERE target_calories IS NULL`);
+  await pool.query(`UPDATE user_settings SET target_protein = 150 WHERE target_protein IS NULL`);
+  await pool.query(`UPDATE user_settings SET target_carbs = 200 WHERE target_carbs IS NULL`);
+  await pool.query(`UPDATE user_settings SET target_fat = 65 WHERE target_fat IS NULL`);
+  await pool.query(`ALTER TABLE user_settings ALTER COLUMN target_calories SET NOT NULL`);
+  await pool.query(`ALTER TABLE user_settings ALTER COLUMN target_protein SET NOT NULL`);
+  await pool.query(`ALTER TABLE user_settings ALTER COLUMN target_carbs SET NOT NULL`);
+  await pool.query(`ALTER TABLE user_settings ALTER COLUMN target_fat SET NOT NULL`);
+
+  // Backward compatibility for environments that already query per-person settings.
+  await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS person text DEFAULT 'A'`);
+
+
   // Backward-compatible self-healing for ingredient scaling migration
   await pool.query(`DO $$ BEGIN
     CREATE TYPE ingredient_scaling_type AS ENUM ('LINEAR', 'FIXED', 'STEP', 'FORMULA');
