@@ -1589,17 +1589,11 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
           {sharedEntries.length > 0 && (
             <div id="shared-meals" className="space-y-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-3">
               <div className="text-sm font-bold text-emerald-800 uppercase tracking-wider">Wspólne posiłki (Tysia + Mati)</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
                 {sharedEntries.map((shared: any, idx: number) => (
-                  <div key={`shared-${shared.mealType}-${shared.recipe?.id}-${idx}`} className="rounded-xl border border-emerald-200 bg-white p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                          {shared.mealType === "breakfast" ? "Śniadanie" : shared.mealType === "lunch" ? "Obiad" : shared.mealType === "dinner" ? "Kolacja" : "Przekąska"}
-                        </p>
-                        <p className="font-semibold truncate">{shared.recipe?.name}</p>
-                        <p className="text-xs text-muted-foreground">Łącznie: {shared.servings} porcji</p>
-                      </div>
+                  <div key={`shared-${shared.mealType}-${shared.recipe?.id}-${idx}`} className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-sm truncate">{shared.recipe?.name}</p>
                       <button
                         onClick={() => onViewPlannedRecipe(shared.recipe, { ...shared.entryA, servings: shared.servings, ingredients: shared.ingredients }, { shared: true })}
                         className="text-muted-foreground hover:text-primary transition-colors"
