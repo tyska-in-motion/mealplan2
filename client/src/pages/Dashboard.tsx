@@ -4,7 +4,6 @@ import { useRecipes } from "@/hooks/use-recipes";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays, subDays, startOfWeek, endOfWeek } from "date-fns";
 import { pl } from "date-fns/locale";
-import { NutritionRing } from "@/components/NutritionRing";
 import { Layout } from "@/components/Layout";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Flame, CheckCircle2, Circle, CalendarDays, ChevronLeft, ChevronRight, Settings2, Wallet, Eye, Check, ChevronsUpDown, X, PlusCircle } from "lucide-react";
@@ -25,6 +24,7 @@ import { calculateScaledAmount } from "@shared/scaling";
 
 export default function Dashboard() {
   type PersonTargets = { calories: number; protein: number; carbs: number; fat: number };
+  type MacroStats = { calories: number; protein: number; carbs: number; fat: number };
   const [date, setDate] = useState(new Date());
   const dateStr = format(date, "yyyy-MM-dd");
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -326,7 +326,7 @@ export default function Dashboard() {
   const allEntries = dayPlan?.entries || [];
   const personName: Record<string, string> = { A: "Tysia", B: "Mati" };
 
-  const calculateConsumed = (entries: any[]) => {
+  const calculateConsumed = (entries: any[]): MacroStats => {
     const eatenEntries = entries.filter((e: any) => e.isEaten) || [];
 
     return eatenEntries.reduce((acc: any, entry: any) => {
@@ -364,38 +364,8 @@ export default function Dashboard() {
   };
 
 
-  const recommendedRecipes = useMemo(() => {
-    const availableIds = new Set<number>([
-      ...(allAvailableIngredients || [])
-        .filter((ingredient: any) => ingredient.alwaysAtHome)
-        .map((ingredient: any) => Number(ingredient.id)),
-      ...(shoppingListExcludedIds || []).map((id) => Number(id)),
-    ]);
-
-    const candidates = (recipes || [])
-      .map((recipe: any) => {
-        const ingredientIds = Array.from(new Set<number>((recipe.ingredients || []).map((ri: any) => Number(ri.ingredientId)).filter((id: number) => id > 0)));
-        if (ingredientIds.length === 0) return null;
-        const availableCount = ingredientIds.filter((id: number) => availableIds.has(id)).length;
-        const coverage = availableCount / ingredientIds.length;
-        return coverage > 0.5 ? { recipe, coverage } : null;
-      })
-      .filter(Boolean) as { recipe: any; coverage: number }[];
-
-    const seed = Number(dateStr.replace(/-/g, "")) || 1;
-    const seeded = [...candidates].sort((a, b) => {
-      const aSeed = (a.recipe.id * 9301 + seed * 49297) % 233280;
-      const bSeed = (b.recipe.id * 9301 + seed * 49297) % 233280;
-      if (aSeed !== bSeed) return aSeed - bSeed;
-      return b.coverage - a.coverage;
-    });
-
-    return seeded.slice(0, 5);
-  }, [allAvailableIngredients, shoppingListExcludedIds, recipes, dateStr]);
-
   if (isLoadingPlan || isLoadingSettings) return <Layout><LoadingSpinner /></Layout>;
 
-  const consumed = calculateConsumed(allEntries);
   const consumedA = calculateConsumed(allEntries.filter((e: any) => (e.person || "A") === "A"));
   const consumedB = calculateConsumed(allEntries.filter((e: any) => (e.person || "A") === "B"));
 
@@ -441,6 +411,32 @@ export default function Dashboard() {
       updateSettingsMutation.mutate({ [mapKey[key]]: Number(value) || 0 });
     }
   };
+
+  const macrosConfig: { key: keyof MacroStats; label: string; unit: string }[] = [
+    { key: "calories", label: "Kcal", unit: "kcal" },
+    { key: "protein", label: "Białka", unit: "g" },
+    { key: "fat", label: "Tł.", unit: "g" },
+    { key: "carbs", label: "Węgl.", unit: "g" },
+  ];
+
+  const renderMacroTiles = (title: string, consumedPerson: MacroStats, targets: PersonTargets) => (
+    <div className="rounded-2xl border border-border/30 bg-[#2f2f33] p-4 md:p-5 shadow-sm">
+      <p className="mb-3 text-sm font-semibold text-zinc-100">{title}</p>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {macrosConfig.map((macro) => (
+          <div key={macro.key} className="rounded-xl bg-[#3a3a3f] p-3 text-zinc-100">
+            <div className="mb-3 h-3 w-full rounded-full bg-[#1d1d21]" />
+            <p className="text-2xl font-semibold leading-none">
+              {macro.label} <span>{Math.round(consumedPerson[macro.key])}</span>
+            </p>
+            <p className="mt-1 text-2xl leading-none text-zinc-400">
+              /{Math.round(targets[macro.key])} {macro.unit}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
 
   const getServingInputKey = (entry: any) => `${entry.id}-${entry.person || "A"}`;
@@ -729,24 +725,8 @@ export default function Dashboard() {
       </header>
 
       <div className="space-y-4 mb-8">
-        <div className="bg-white rounded-2xl p-4 border border-border/50">
-          <p className="text-sm font-semibold mb-3">Tysia</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <NutritionRing current={consumedA.calories} target={targetsByPerson.A.calories} label="Kalorie" color="hsl(var(--primary))" unit="kcal" />
-            <NutritionRing current={consumedA.protein} target={targetsByPerson.A.protein} label="Białko" color="#3b82f6" unit="g" />
-            <NutritionRing current={consumedA.carbs} target={targetsByPerson.A.carbs} label="Węgle" color="#f59e0b" unit="g" />
-            <NutritionRing current={consumedA.fat} target={targetsByPerson.A.fat} label="Tłuszcze" color="#ef4444" unit="g" />
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl p-4 border border-border/50">
-          <p className="text-sm font-semibold mb-3">Mati</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <NutritionRing current={consumedB.calories} target={targetsByPerson.B.calories} label="Kalorie" color="hsl(var(--primary))" unit="kcal" />
-            <NutritionRing current={consumedB.protein} target={targetsByPerson.B.protein} label="Białko" color="#3b82f6" unit="g" />
-            <NutritionRing current={consumedB.carbs} target={targetsByPerson.B.carbs} label="Węgle" color="#f59e0b" unit="g" />
-            <NutritionRing current={consumedB.fat} target={targetsByPerson.B.fat} label="Tłuszcze" color="#ef4444" unit="g" />
-          </div>
-        </div>
+        {renderMacroTiles("Tysia", consumedA, targetsByPerson.A)}
+        {renderMacroTiles("Mati", consumedB, targetsByPerson.B)}
       </div>
 
       <RecipeView 
@@ -766,34 +746,6 @@ export default function Dashboard() {
         showFooter={false}
         onAddToPlan={() => {}} 
       />
-
-
-      <div className="bg-white rounded-2xl p-5 border border-border/50 shadow-sm mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl font-bold">Polecane przepisy na dziś</h2>
-          <span className="text-xs text-muted-foreground">Losowane codziennie • {">"}50% składników</span>
-        </div>
-        {recommendedRecipes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Brak propozycji — oznacz więcej składników jako "zawsze mam w domu".</p>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            {recommendedRecipes.map(({ recipe, coverage }) => (
-              <button
-                key={recipe.id}
-                className="text-left rounded-xl border p-3 hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                onClick={() => {
-                  setViewingRecipe(recipe);
-                  setViewingMeal(null);
-                  setViewingPlannedServings(undefined);
-                }}
-              >
-                <p className="font-semibold text-sm line-clamp-2">{recipe.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">Dostępność: {Math.round(coverage * 100)}%</p>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
       <div className="space-y-6">
         <div className="flex items-center justify-between">
