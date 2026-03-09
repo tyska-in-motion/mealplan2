@@ -283,10 +283,18 @@ export default function Dashboard() {
   useEffect(() => {
     if (!settings) return;
     const baseTargets = {
-      calories: settings.targetCalories ?? 2000,
-      protein: settings.targetProtein ?? 150,
-      carbs: settings.targetCarbs ?? 200,
-      fat: settings.targetFat ?? 65,
+      A: {
+        calories: settings?.A?.targetCalories ?? 2000,
+        protein: settings?.A?.targetProtein ?? 150,
+        carbs: settings?.A?.targetCarbs ?? 200,
+        fat: settings?.A?.targetFat ?? 65,
+      },
+      B: {
+        calories: settings?.B?.targetCalories ?? settings?.A?.targetCalories ?? 2000,
+        protein: settings?.B?.targetProtein ?? settings?.A?.targetProtein ?? 150,
+        carbs: settings?.B?.targetCarbs ?? settings?.A?.targetCarbs ?? 200,
+        fat: settings?.B?.targetFat ?? settings?.A?.targetFat ?? 65,
+      },
     };
 
     let localOverrides: any = {};
@@ -298,16 +306,16 @@ export default function Dashboard() {
 
     setTargetsByPerson({
       A: {
-        calories: Number(localOverrides?.A?.calories ?? baseTargets.calories),
-        protein: Number(localOverrides?.A?.protein ?? baseTargets.protein),
-        carbs: Number(localOverrides?.A?.carbs ?? baseTargets.carbs),
-        fat: Number(localOverrides?.A?.fat ?? baseTargets.fat),
+        calories: Number(localOverrides?.A?.calories ?? baseTargets.A.calories),
+        protein: Number(localOverrides?.A?.protein ?? baseTargets.A.protein),
+        carbs: Number(localOverrides?.A?.carbs ?? baseTargets.A.carbs),
+        fat: Number(localOverrides?.A?.fat ?? baseTargets.A.fat),
       },
       B: {
-        calories: Number(localOverrides?.B?.calories ?? baseTargets.calories),
-        protein: Number(localOverrides?.B?.protein ?? baseTargets.protein),
-        carbs: Number(localOverrides?.B?.carbs ?? baseTargets.carbs),
-        fat: Number(localOverrides?.B?.fat ?? baseTargets.fat),
+        calories: Number(localOverrides?.B?.calories ?? baseTargets.B.calories),
+        protein: Number(localOverrides?.B?.protein ?? baseTargets.B.protein),
+        carbs: Number(localOverrides?.B?.carbs ?? baseTargets.B.carbs),
+        fat: Number(localOverrides?.B?.fat ?? baseTargets.B.fat),
       },
     });
   }, [settings]);
@@ -401,15 +409,13 @@ export default function Dashboard() {
     setTargetsByPerson(next);
     localStorage.setItem("dashboard-person-targets", JSON.stringify(next));
 
-    if (person === "A") {
-      const mapKey: Record<keyof PersonTargets, string> = {
-        calories: "targetCalories",
-        protein: "targetProtein",
-        carbs: "targetCarbs",
-        fat: "targetFat",
-      };
-      updateSettingsMutation.mutate({ [mapKey[key]]: Number(value) || 0 });
-    }
+    const mapKey: Record<keyof PersonTargets, string> = {
+      calories: "targetCalories",
+      protein: "targetProtein",
+      carbs: "targetCarbs",
+      fat: "targetFat",
+    };
+    updateSettingsMutation.mutate({ person, [mapKey[key]]: Number(value) || 0 });
   };
 
   const macrosConfig: { key: keyof MacroStats; label: string; unit: string; barClassName: string }[] = [

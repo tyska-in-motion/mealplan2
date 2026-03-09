@@ -710,12 +710,15 @@ export async function registerRoutes(
   app.patch("/api/user-settings", async (req, res) => {
     try {
       const input = z.object({
+        person: z.enum(["A", "B"]),
         targetCalories: z.number().optional(),
         targetProtein: z.number().optional(),
         targetCarbs: z.number().optional(),
         targetFat: z.number().optional(),
       }).parse(req.body);
-      const settings = await storage.updateUserSettings(input);
+
+      const { person, ...updates } = input;
+      const settings = await storage.updateUserSettings(person, updates);
       res.json(settings);
     } catch (err) {
       if (err instanceof z.ZodError) {
