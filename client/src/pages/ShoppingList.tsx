@@ -104,14 +104,26 @@ export default function ShoppingList() {
     });
   }, [activeItems, checkedItems]);
 
-  const groupedList = sortedActiveItems.reduce((acc: Record<string, any[]>, item: any) => {
-    const category = item.category || "Inne";
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(item);
-    return acc;
-  }, {});
+  const uncheckedActiveItems = sortedActiveItems.filter((item: any) => {
+    const isChecked = item.isExtra ? !!item.isChecked : !!checkedItems[item.ingredientId];
+    return !isChecked;
+  });
 
-  const categories = Object.keys(groupedList).sort();
+  const checkedActiveItems = sortedActiveItems.filter((item: any) => {
+    const isChecked = item.isExtra ? !!item.isChecked : !!checkedItems[item.ingredientId];
+    return isChecked;
+  });
+
+  const groupByCategory = (items: any[]) =>
+    items.reduce((acc: Record<string, any[]>, item: any) => {
+      const category = item.category || "Inne";
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(item);
+      return acc;
+    }, {});
+
+  const uncheckedGroupedList = groupByCategory(uncheckedActiveItems);
+  const uncheckedCategories = Object.keys(uncheckedGroupedList).sort();
 
   const toggleCheck = (item: any) => {
     if (item.isExtra) {
@@ -156,9 +168,12 @@ export default function ShoppingList() {
     if (!printWindow) return;
 
     const printDate = format(new Date(), "yyyy-MM-dd HH:mm");
-    const content = categories
+    const groupedListForExport = groupByCategory(sortedActiveItems);
+    const categoriesForExport = Object.keys(groupedListForExport).sort();
+
+    const content = categoriesForExport
       .map((category) => {
-        const rows = groupedList[category]
+        const rows = groupedListForExport[category]
           .map((item: any) => {
             const isChecked = checkedItems[item.ingredientId] ? "✓" : "☐";
             return `<tr>
@@ -272,61 +287,63 @@ export default function ShoppingList() {
                 Twoja lista zakupów jest pusta dla tego okresu. Zaplanuj najpierw posiłki!
               </div>
             ) : (
-              categories.map(category => (
-                <div key={category} className="bg-white">
-                  <div className="px-6 py-2 bg-muted/30 text-xs font-bold uppercase tracking-wider text-muted-foreground border-y border-border/50">
-                    {category}
-                  </div>
-                  <div className="divide-y divide-border/50">
-                    {groupedList[category].map((item: any) => {
-                      const isChecked = item.isExtra ? item.isChecked : checkedItems[item.ingredientId];
-                      return (
-                        <div 
-                          key={item.ingredientId} 
-                          onClick={() => toggleCheck(item)}
-                          className={cn(
-                            "p-4 flex items-center justify-between hover:bg-muted/30 cursor-pointer transition-colors group",
-                            isChecked && "bg-muted/20"
-                          )}
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className={cn(
-                              "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
-                              isChecked ? "bg-primary border-primary" : "border-muted-foreground/30 group-hover:border-primary"
-                            )}>
-                              {isChecked && <Check className="w-4 h-4 text-white" />}
-                            </div>
-                            <span className={cn(
-                              "font-medium transition-all",
-                              isChecked && "text-muted-foreground line-through decoration-border"
-                            )}>{item.name}</span>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <span className="text-sm font-mono text-muted-foreground bg-secondary px-2 py-1 rounded">
-                              {formatAmount(item.totalAmount)} {item.unit}
-                            </span>
-                            {Number(item.unitWeight || 0) > 0 && (
-                              <span className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                                ok. {formatAmount(item.totalAmount / Number(item.unitWeight))} szt.
-                              </span>
+              <>
+                {uncheckedCategories.map((category) => (
+                  <div key={`unchecked-${category}`} className="bg-white">
+                    <div className="px-4 py-1.5 bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-y border-border/50">
+                      {category}
+                    </div>
+                    <div className="divide-y divide-border/50">
+                      {uncheckedGroupedList[category].map((item: any) => {
+                        const isChecked = item.isExtra ? item.isChecked : checkedItems[item.ingredientId];
+                        return (
+                          <div
+                            key={item.isExtra ? `extra-${item.extraId}` : `ingredient-${item.ingredientId}`}
+                            onClick={() => toggleCheck(item)}
+                            className={cn(
+                              "py-2 px-3 flex items-center justify-between hover:bg-muted/30 cursor-pointer transition-colors group",
+                              isChecked && "bg-muted/20"
                             )}
-                            <div className="flex gap-2">
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className={cn(
+                                "w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0",
+                                isChecked ? "bg-primary border-primary" : "border-muted-foreground/30 group-hover:border-primary"
+                              )}>
+                                {isChecked && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className={cn(
+                                "text-sm font-medium transition-all truncate",
+                                isChecked && "text-muted-foreground line-through decoration-border"
+                              )}>{item.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2 pl-2 shrink-0">
+                              <div className="flex flex-col items-end gap-0.5">
+                                <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                                  {formatAmount(item.totalAmount)} {item.unit}
+                                </span>
+                                {Number(item.unitWeight || 0) > 0 && (
+                                  <span className="text-[9px] text-blue-600 font-medium bg-blue-50 px-1.5 py-0 rounded-full border border-blue-100">
+                                    ok. {formatAmount(item.totalAmount / Number(item.unitWeight))} szt.
+                                  </span>
+                                )}
+                              </div>
                               {item.isExtra ? (
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7"
+                                  className="h-6 w-6"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     deleteExtraMutation.mutate(item.extraId);
                                   }}
                                 >
-                                  <X className="w-4 h-4 text-red-500" />
+                                  <X className="w-3.5 h-3.5 text-red-500" />
                                 </Button>
                               ) : (
                                 <Button
                                   variant="outline"
-                                  className="h-7 px-2 text-[10px]"
+                                  className="h-6 px-1.5 text-[9px]"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const isExcluded = excludedItems.includes(item.ingredientId);
@@ -338,13 +355,47 @@ export default function ShoppingList() {
                               )}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </>
             )}
+          </div>
+        </div>
+      )}
+
+      {checkedActiveItems.length > 0 && (
+        <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
+          <div className="px-4 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+            <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Kupione</h2>
+            <span className="text-xs text-muted-foreground">{checkedActiveItems.length} pozycji</span>
+          </div>
+          <div className="divide-y divide-border/40">
+            {checkedActiveItems.map((item: any) => {
+              const isChecked = item.isExtra ? item.isChecked : checkedItems[item.ingredientId];
+              return (
+                <div
+                  key={item.isExtra ? `checked-extra-${item.extraId}` : `checked-ingredient-${item.ingredientId}`}
+                  onClick={() => toggleCheck(item)}
+                  className="py-2 px-3 flex items-center justify-between hover:bg-muted/20 cursor-pointer transition-colors group bg-muted/10"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={cn(
+                      "w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0",
+                      isChecked ? "bg-primary border-primary" : "border-muted-foreground/30 group-hover:border-primary"
+                    )}>
+                      {isChecked && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <span className="text-sm font-medium text-muted-foreground line-through decoration-border truncate">{item.name}</span>
+                  </div>
+                  <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded shrink-0 ml-2">
+                    {formatAmount(item.totalAmount)} {item.unit}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -357,18 +408,18 @@ export default function ShoppingList() {
           </div>
           <div className="divide-y divide-border/50">
             {excludedFromHomeItems.map((item: any) => (
-              <div key={`excluded-${item.ingredientId}`} className="p-4 flex items-center justify-between bg-muted/10">
-                <div className="flex items-center gap-4">
-                  <div className="w-6 h-6 rounded-full border-2 border-muted-foreground/30" />
-                  <span className="font-medium text-muted-foreground">{item.name}</span>
+              <div key={`excluded-${item.ingredientId}`} className="py-2 px-3 flex items-center justify-between bg-muted/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-4 h-4 rounded-full border border-muted-foreground/30" />
+                  <span className="text-sm font-medium text-muted-foreground">{item.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono text-muted-foreground bg-secondary px-2 py-1 rounded">
+                  <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
                     {formatAmount(item.totalAmount)} {item.unit}
                   </span>
                   <Button
                     variant="outline"
-                    className="h-7 px-2 text-[10px]"
+                    className="h-6 px-1.5 text-[9px]"
                     onClick={() => toggleExclusionMutation.mutate({ ingredientId: item.ingredientId, excluded: false })}
                   >
                     Przywróć
