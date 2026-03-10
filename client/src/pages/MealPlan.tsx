@@ -1892,7 +1892,15 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
 
                       <div className="space-y-3 flex-1">
                         {entries.map((entry: any) => (
-                          <div key={entry.id} className="group relative flex items-center gap-2 bg-background p-2 rounded-xl border border-border overflow-hidden">
+                          <div
+                            key={entry.id}
+                            className={cn(
+                              "group relative flex items-center gap-2 p-2 rounded-xl border overflow-hidden transition-colors",
+                              entry.isEaten
+                                ? "bg-emerald-100 border-emerald-300"
+                                : "bg-background border-border",
+                            )}
+                          >
                             <input
                               type="checkbox"
                               checked={!!selectedEntries[entry.id]}
@@ -1976,7 +1984,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
                             </div>
 
                             <div className="flex items-center">
-                              <button onClick={() => onToggleEaten({ id: entry.id, isEaten: !entry.isEaten })} className={cn("p-1 rounded-md transition-colors", entry.isEaten ? "text-primary bg-primary/10" : "text-muted-foreground hover:bg-muted")}>
+                              <button onClick={() => onToggleEaten({ id: entry.id, isEaten: !entry.isEaten })} className={cn("p-1 rounded-md transition-colors", entry.isEaten ? "text-emerald-800 bg-emerald-200" : "text-muted-foreground hover:bg-muted")}>
                                 {entry.isEaten ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
                               </button>
 

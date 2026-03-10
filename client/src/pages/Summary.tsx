@@ -91,10 +91,12 @@ export default function Summary() {
     const recipeMap = new Map<number, { name: string; count: number }>();
 
     days.forEach((day) => {
+      const recipesCookedToday = new Set<number>();
+
       (day.entries || []).forEach((entry: any) => {
         if (entry.recipe?.id) {
+          recipesCookedToday.add(Number(entry.recipe.id));
           const currentRecipe = recipeMap.get(entry.recipe.id) || { name: entry.recipe.name, count: 0 };
-          currentRecipe.count += 1;
           recipeMap.set(entry.recipe.id, currentRecipe);
         }
 
@@ -111,6 +113,13 @@ export default function Summary() {
           currentIngredient.usedInDays.add(day.date);
           ingredientMap.set(ri.ingredient.id, currentIngredient);
         });
+      });
+
+      recipesCookedToday.forEach((recipeId) => {
+        const recipe = recipeMap.get(recipeId);
+        if (!recipe) return;
+        recipe.count += 1;
+        recipeMap.set(recipeId, recipe);
       });
     });
 
@@ -186,44 +195,46 @@ export default function Summary() {
       };
     });
 
-    const eatenEntries = days.flatMap((day) => (day.entries || []).filter((entry: any) => entry.isEaten));
-
-    const getEatenCaloriesForPerson = (person: "A" | "B") => eatenEntries.reduce((sum: number, entry: any) => {
-      if ((entry.person || "A") !== person) return sum;
-
-      return sum + calculateEntryNutrients(entry).calories;
-    }, 0);
-
-    const getEatenMacroForPerson = (person: "A" | "B", macro: "protein" | "carbs" | "fat") =>
-      eatenEntries.reduce((sum: number, entry: any) => {
-        if ((entry.person || "A") !== person) return sum;
-        return sum + calculateEntryNutrients(entry)[macro];
-      }, 0);
-
-    const perPersonAvgEatenCalories = {
-      A: eatenEntries.filter((entry: any) => (entry.person || "A") === "A").length
-        ? Math.round(getEatenCaloriesForPerson("A") / eatenEntries.filter((entry: any) => (entry.person || "A") === "A").length)
-        : 0,
-      B: eatenEntries.filter((entry: any) => (entry.person || "A") === "B").length
-        ? Math.round(getEatenCaloriesForPerson("B") / eatenEntries.filter((entry: any) => (entry.person || "A") === "B").length)
-        : 0,
+    const personStats = {
+      A: { totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, daysWithMeals: 0 },
+      B: { totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, daysWithMeals: 0 },
     };
 
-    const perPersonEntryCount = {
-      A: eatenEntries.filter((entry: any) => (entry.person || "A") === "A").length,
-      B: eatenEntries.filter((entry: any) => (entry.person || "A") === "B").length,
+    days.forEach((day) => {
+      (["A", "B"] as const).forEach((person) => {
+        const personEntriesForDay = (day.entries || []).filter(
+          (entry: any) => entry.isEaten && (entry.person || "A") === person,
+        );
+
+        if (!personEntriesForDay.length) return;
+
+        personStats[person].daysWithMeals += 1;
+
+        personEntriesForDay.forEach((entry: any) => {
+          const nutrients = calculateEntryNutrients(entry);
+          personStats[person].totalCalories += nutrients.calories;
+          personStats[person].totalProtein += nutrients.protein;
+          personStats[person].totalCarbs += nutrients.carbs;
+          personStats[person].totalFat += nutrients.fat;
+        });
+      });
+    });
+
+    const perPersonAvgEatenCalories = {
+      A: personStats.A.daysWithMeals ? Math.round(personStats.A.totalCalories / personStats.A.daysWithMeals) : 0,
+      B: personStats.B.daysWithMeals ? Math.round(personStats.B.totalCalories / personStats.B.daysWithMeals) : 0,
     };
 
     const perPersonAvgEatenMacros = {
       A: {
-        protein: perPersonEntryCount.A ? Math.round(getEatenMacroForPerson("A", "protein") / perPersonEntryCount.A) : 0,
-        carbs: perPersonEntryCount.A ? Math.round(getEatenMacroForPerson("A", "carbs") / perPersonEntryCount.A) : 0,
-        fat: perPersonEntryCount.A ? Math.round(getEatenMacroForPerson("A", "fat") / perPersonEntryCount.A) : 0,
+        protein: personStats.A.daysWithMeals ? Math.round(personStats.A.totalProtein / personStats.A.daysWithMeals) : 0,
+        carbs: personStats.A.daysWithMeals ? Math.round(personStats.A.totalCarbs / personStats.A.daysWithMeals) : 0,
+        fat: personStats.A.daysWithMeals ? Math.round(personStats.A.totalFat / personStats.A.daysWithMeals) : 0,
       },
       B: {
-        protein: perPersonEntryCount.B ? Math.round(getEatenMacroForPerson("B", "protein") / perPersonEntryCount.B) : 0,
-        carbs: perPersonEntryCount.B ? Math.round(getEatenMacroForPerson("B", "carbs") / perPersonEntryCount.B) : 0,
-        fat: perPersonEntryCount.B ? Math.round(getEatenMacroForPerson("B", "fat") / perPersonEntryCount.B) : 0,
+        protein: personStats.B.daysWithMeals ? Math.round(personStats.B.totalProtein / personStats.B.daysWithMeals) : 0,
+        carbs: personStats.B.daysWithMeals ? Math.round(personStats.B.totalCarbs / personStats.B.daysWithMeals) : 0,
+        fat: personStats.B.daysWithMeals ? Math.round(personStats.B.totalFat / personStats.B.daysWithMeals) : 0,
       },
     };
 
