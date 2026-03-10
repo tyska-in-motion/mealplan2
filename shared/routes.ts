@@ -4,6 +4,7 @@ import {
   insertIngredientSchema, 
   insertRecipeSchema, 
   insertMealEntrySchema, 
+  insertSharedMealBatchSchema,
   insertRecipeIngredientSchema,
   ingredients, 
   recipes, 
@@ -265,6 +266,33 @@ export const api = {
       }),
       responses: {
         200: z.array(z.custom<any>()), // ShoppingListItem[]
+      },
+    },
+  },
+  sharedMeals: {
+    list: {
+      method: "GET" as const,
+      path: "/api/shared-meals",
+      responses: {
+        200: z.array(z.custom<any>()),
+      },
+    },
+    createBatch: {
+      method: "POST" as const,
+      path: "/api/shared-meals",
+      input: insertSharedMealBatchSchema.pick({ recipeId: true, totalServings: true, note: true }),
+      responses: {
+        201: z.custom<any>(),
+        400: errorSchemas.validation,
+      },
+    },
+    archiveBatch: {
+      method: "PATCH" as const,
+      path: "/api/shared-meals/:id/archive",
+      input: z.object({ isArchived: z.boolean().optional().default(true) }),
+      responses: {
+        200: z.custom<any>(),
+        404: errorSchemas.notFound,
       },
     },
   },

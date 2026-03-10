@@ -90,6 +90,15 @@ export const recipeFrequentAddons = pgTable("recipe_frequent_addons", {
   stepThresholds: jsonb("step_thresholds").$type<{ minServings: number; maxServings?: number | null; amount: number }[]>(),
 });
 
+export const sharedMealBatches = pgTable("shared_meal_batches", {
+  id: serial("id").primaryKey(),
+  recipeId: integer("recipe_id").notNull(),
+  totalServings: real("total_servings").notNull().default(1),
+  note: text("note"),
+  isArchived: boolean("is_archived").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const mealEntries = pgTable("meal_entries", {
   id: serial("id").primaryKey(),
   date: text("date").notNull(), // YYYY-MM-DD
@@ -102,6 +111,8 @@ export const mealEntries = pgTable("meal_entries", {
   mealType: text("meal_type").notNull(), // breakfast, lunch, dinner, snack
   person: text("person").notNull().default("A"), // A or B
   servings: real("servings").notNull().default(1),
+  cookedBatchId: integer("cooked_batch_id"),
+
   isEaten: boolean("is_eaten").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -119,6 +130,7 @@ export const recipesRelations = relations(recipes, ({ many }) => ({
   ingredients: many(recipeIngredients),
   frequentAddons: many(recipeFrequentAddons),
   mealEntries: many(mealEntries),
+  sharedBatches: many(sharedMealBatches),
 }));
 
 export const ingredientsRelations = relations(ingredients, ({ many }) => ({
@@ -149,10 +161,22 @@ export const recipeFrequentAddonsRelations = relations(recipeFrequentAddons, ({ 
   }),
 }));
 
+
+export const sharedMealBatchesRelations = relations(sharedMealBatches, ({ one, many }) => ({
+  recipe: one(recipes, {
+    fields: [sharedMealBatches.recipeId],
+    references: [recipes.id],
+  }),
+  mealEntries: many(mealEntries),
+}));
 export const mealEntriesRelations = relations(mealEntries, ({ one, many }) => ({
   recipe: one(recipes, {
     fields: [mealEntries.recipeId],
     references: [recipes.id],
+  }),
+  cookedBatch: one(sharedMealBatches, {
+    fields: [mealEntries.cookedBatchId],
+    references: [sharedMealBatches.id],
   }),
   ingredients: many(mealEntryIngredients),
 }));
@@ -206,6 +230,7 @@ export const insertRecipeSchema = createInsertSchema(recipes).omit({ id: true, c
 export const insertRecipeIngredientSchema = createInsertSchema(recipeIngredients).omit({ id: true });
 export const insertRecipeFrequentAddonSchema = createInsertSchema(recipeFrequentAddons).omit({ id: true });
 export const insertMealEntrySchema = createInsertSchema(mealEntries).omit({ id: true, createdAt: true });
+export const insertSharedMealBatchSchema = createInsertSchema(sharedMealBatches).omit({ id: true, createdAt: true });
 export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({ id: true });
 
 export type Ingredient = typeof ingredients.$inferSelect;
@@ -213,11 +238,13 @@ export type Recipe = typeof recipes.$inferSelect;
 export type RecipeIngredient = typeof recipeIngredients.$inferSelect;
 export type RecipeFrequentAddon = typeof recipeFrequentAddons.$inferSelect;
 export type MealEntry = typeof mealEntries.$inferSelect;
+export type SharedMealBatch = typeof sharedMealBatches.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
 
 export type CreateIngredientRequest = z.infer<typeof insertIngredientSchema>;
 export type CreateRecipeRequest = z.infer<typeof insertRecipeSchema>;
 export type CreateMealEntryRequest = z.infer<typeof insertMealEntrySchema>;
+export type CreateSharedMealBatchRequest = z.infer<typeof insertSharedMealBatchSchema>;
 
 // Extended types for frontend
 export type RecipeWithIngredients = Recipe & {
