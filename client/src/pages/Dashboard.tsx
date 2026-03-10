@@ -1,4 +1,4 @@
-import { useDayPlan, useUpdateMealEntry, useToggleEaten, useAddMealEntry } from "@/hooks/use-meal-plan";
+import { useDayPlan, useUpdateMealEntry, useToggleEaten, useAddMealEntry, useDeleteMealEntry } from "@/hooks/use-meal-plan";
 import { useIngredients } from "@/hooks/use-ingredients";
 import { useRecipes } from "@/hooks/use-recipes";
 import { useToast } from "@/hooks/use-toast";
@@ -34,7 +34,7 @@ export default function Dashboard() {
   const [viewingMeal, setViewingMeal] = useState<any>(null);
   const [viewingPlannedServings, setViewingPlannedServings] = useState<number | undefined>(undefined);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
-  const [quickAddMode, setQuickAddMode] = useState<"recipe" | "custom">("recipe");
+  const [quickAddMode, setQuickAddMode] = useState<"recipe" | "ingredient" | "custom">("recipe");
   const [quickMealType, setQuickMealType] = useState("lunch");
   const [quickPerson, setQuickPerson] = useState<"A" | "B">("A");
   const [quickRecipeId, setQuickRecipeId] = useState<number | null>(null);
@@ -43,6 +43,8 @@ export default function Dashboard() {
   const [quickCustomProtein, setQuickCustomProtein] = useState<number>(25);
   const [quickCustomCarbs, setQuickCustomCarbs] = useState<number>(45);
   const [quickCustomFat, setQuickCustomFat] = useState<number>(15);
+  const [quickIngredientId, setQuickIngredientId] = useState<number | null>(null);
+  const [quickIngredientAmount, setQuickIngredientAmount] = useState<number>(100);
   const [servingInputs, setServingInputs] = useState<Record<string, string>>({});
   const [targetsByPerson, setTargetsByPerson] = useState<Record<"A" | "B", PersonTargets>>({
     A: { calories: 1850, protein: 120, carbs: 205, fat: 61 },
@@ -56,6 +58,7 @@ export default function Dashboard() {
 
   const { mutate: updateMealEntry, isPending: isSaving } = useUpdateMealEntry();
   const { mutate: addEntry, isPending: isQuickAdding } = useAddMealEntry();
+  const { mutate: deleteEntry, isPending: isDeletingMeal } = useDeleteMealEntry();
   const { data: recipes } = useRecipes();
   const weekStart = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
   const weekEnd = format(endOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
@@ -396,6 +399,8 @@ export default function Dashboard() {
     setQuickCustomProtein(25);
     setQuickCustomCarbs(45);
     setQuickCustomFat(15);
+    setQuickIngredientId(null);
+    setQuickIngredientAmount(100);
   };
 
   const updatePersonTargets = (person: "A" | "B", key: keyof PersonTargets, value: number) => {
@@ -523,6 +528,56 @@ export default function Dashboard() {
       return;
     }
 
+    if (quickAddMode === "ingredient") {
+      if (!quickIngredientId || !allAvailableIngredients) {
+        toast({ title: "Błąd", description: "Wybierz składnik.", variant: "destructive" });
+        return;
+      }
+
+      if (quickIngredientAmount <= 0) {
+        toast({ title: "Błąd", description: "Podaj poprawną gramaturę.", variant: "destructive" });
+        return;
+      }
+
+      const ingredient = allAvailableIngredients.find((item: any) => item.id === quickIngredientId);
+      if (!ingredient) {
+        toast({ title: "Błąd", description: "Nie znaleziono składnika.", variant: "destructive" });
+        return;
+      }
+
+      const factor = quickIngredientAmount / 100;
+      addEntry({
+        date: dateStr,
+        mealType: quickMealType,
+        person: quickPerson,
+        customName: ingredient.name,
+        customCalories: Math.round((ingredient.calories || 0) * factor),
+        customProtein: Number(((ingredient.protein || 0) * factor).toFixed(1)),
+        customCarbs: Number(((ingredient.carbs || 0) * factor).toFixed(1)),
+        customFat: Number(((ingredient.fat || 0) * factor).toFixed(1)),
+        servings: 1,
+        isEaten: true,
+        recipeId: null as any,
+      }, {
+        onSuccess: (entry) => {
+          updateMealEntry({
+            id: entry.id,
+            updates: {
+              ingredients: [{ ingredientId: quickIngredientId, amount: Math.round(quickIngredientAmount) }],
+              servings: 1,
+            },
+          }, {
+            onSuccess: () => {
+              setIsQuickAddOpen(false);
+              resetQuickAdd();
+              toast({ title: "Dodano", description: "Składnik został dodany i oznaczony jako zjedzony." });
+            },
+          });
+        },
+      });
+      return;
+    }
+
     if (!quickCustomName.trim()) {
       toast({ title: "Błąd", description: "Podaj nazwę posiłku.", variant: "destructive" });
       return;
@@ -610,6 +665,9 @@ export default function Dashboard() {
                   <Button type="button" variant={quickAddMode === "recipe" ? "default" : "outline"} onClick={() => setQuickAddMode("recipe")} className="flex-1">
                     Z przepisu
                   </Button>
+                  <Button type="button" variant={quickAddMode === "ingredient" ? "default" : "outline"} onClick={() => setQuickAddMode("ingredient")} className="flex-1">
+                    Składnik
+                  </Button>
                   <Button type="button" variant={quickAddMode === "custom" ? "default" : "outline"} onClick={() => setQuickAddMode("custom")} className="flex-1">
                     Własny posiłek
                   </Button>
@@ -642,6 +700,40 @@ export default function Dashboard() {
                         </Command>
                       </PopoverContent>
                     </Popover>
+                  </div>
+                ) : quickAddMode === "ingredient" ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium">Składnik</label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" role="combobox" className={cn("w-full justify-between", !quickIngredientId && "text-muted-foreground")}>
+                            {quickIngredientId ? allAvailableIngredients?.find((i: any) => i.id === quickIngredientId)?.name : "Wybierz składnik..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[440px] p-0">
+                          <Command>
+                            <CommandInput placeholder="Szukaj składnika..." />
+                            <CommandList>
+                              <CommandEmpty>Nie znaleziono składnika.</CommandEmpty>
+                              <CommandGroup>
+                                {allAvailableIngredients?.map((ingredient: any) => (
+                                  <CommandItem key={ingredient.id} value={ingredient.name} onSelect={() => setQuickIngredientId(ingredient.id)}>
+                                    <Check className={cn("mr-2 h-4 w-4", quickIngredientId === ingredient.id ? "opacity-100" : "opacity-0")} />
+                                    {ingredient.name}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Gramatura (g)</label>
+                      <Input type="number" min={1} value={quickIngredientAmount} onChange={(e) => setQuickIngredientAmount(Number(e.target.value) || 0)} />
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -909,9 +1001,21 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <div 
-                          className="w-12 h-12 rounded-lg bg-cover bg-center border border-border/50" 
-                          style={{ backgroundImage: `url(${meal.recipe?.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'})` }} 
-                        />
+                          className="flex items-center gap-2"
+                        >
+                          <button
+                            className="rounded-md p-1 text-muted-foreground opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+                            title="Usuń posiłek"
+                            onClick={() => deleteEntry({ id: meal.id, date: meal.date })}
+                            disabled={isDeletingMeal}
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                          <div
+                            className="w-12 h-12 rounded-lg bg-cover bg-center border border-border/50"
+                            style={{ backgroundImage: `url(${meal.recipe?.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'})` }}
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
