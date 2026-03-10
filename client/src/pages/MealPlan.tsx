@@ -740,7 +740,7 @@ export default function MealPlan() {
   return (
     <Layout>
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-3xl font-bold">Plan Tygodniowy</h1>
+        <h1 className="text-3xl font-bold">Plan Tygodniowy (widok okienek)</h1>
         <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white p-2 shadow-sm sm:w-auto sm:justify-start sm:gap-4">
           <button onClick={() => setBaseDate(d => subDays(d, 7))} className="p-2 hover:bg-muted rounded-lg transition-colors">
             <ChevronLeft className="w-5 h-5" />
@@ -1867,13 +1867,13 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
           {people.map((person) => (
             <div key={person} className="space-y-2">
               <div className="text-sm font-bold text-muted-foreground uppercase tracking-wider">{personName[person]}</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {["breakfast", "lunch", "dinner", "snack"].map((mealType) => {
                   const entries = dayPlan?.entries.filter((e: any) => e.mealType === mealType && (e.person || "A") === person) || [];
 
                   return (
-                    <div key={`${person}-${mealType}`} className="bg-white rounded-2xl p-4 shadow-sm border border-border/50 flex flex-col min-h-[200px]">
-                      <div className="flex items-center justify-between mb-4 border-b border-border/50 pb-2">
+                    <div key={`${person}-${mealType}`} className="bg-white rounded-xl p-3 shadow-sm border border-border/50 flex flex-col min-h-[150px]">
+                      <div className="flex items-center justify-between mb-2 border-b border-border/50 pb-1.5">
                         <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
                           {mealType === "breakfast" ? "Śniadanie" : mealType === "lunch" ? "Obiad" : mealType === "dinner" ? "Kolacja" : "Przekąska"}
                         </h3>
@@ -1890,7 +1890,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
                         </div>
                       </div>
 
-                      <div className="space-y-3 flex-1">
+                      <div className="space-y-2 flex-1">
                         {entries.map((entry: any) => (
                           <div key={entry.id} className="group relative flex items-center gap-3 bg-background p-2 rounded-xl border border-border">
                             <input
