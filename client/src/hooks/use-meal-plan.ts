@@ -35,6 +35,7 @@ export function useAddMealEntry() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.mealPlan.getDay.path, variables.date] });
       queryClient.invalidateQueries({ queryKey: [api.mealPlan.getShoppingList.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
     },
   });
 }
@@ -63,6 +64,7 @@ export function useDeleteMealEntry() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.mealPlan.getDay.path, variables.date] });
       queryClient.invalidateQueries({ queryKey: [api.mealPlan.getShoppingList.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
     },
   });
 }
@@ -84,6 +86,7 @@ export function useUpdateMealEntry() {
       queryClient.invalidateQueries({ queryKey: [api.mealPlan.getDay.path, data.date] });
       // Also invalidate shopping list as ingredients might have changed
       queryClient.invalidateQueries({ queryKey: [api.mealPlan.getShoppingList.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
       toast({ title: "Sukces", description: "Zmiany zostały zapisane." });
     },
     onError: (error: Error) => {
@@ -119,6 +122,7 @@ export function useCopyDayPlan() {
       queryClient.invalidateQueries({ queryKey: [api.mealPlan.getDay.path, variables.sourceDate] });
       queryClient.invalidateQueries({ queryKey: [api.mealPlan.getDay.path, variables.targetDate] });
       queryClient.invalidateQueries({ queryKey: [api.mealPlan.getShoppingList.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
       toast({ title: "Sukces", description: "Dzień został skopiowany." });
     },
     onError: (error: Error) => {

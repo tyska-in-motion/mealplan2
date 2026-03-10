@@ -6,6 +6,7 @@ import {
   recipeIngredients,
   recipeFrequentAddons,
   mealEntries,
+  sharedMealBatches,
   userSettings,
   shoppingListChecks,
   shoppingListExtras,
@@ -14,9 +15,11 @@ import {
   type Ingredient,
   type Recipe,
   type MealEntry,
+  type SharedMealBatch,
   type CreateIngredientRequest,
   type CreateRecipeRequest,
   type CreateMealEntryRequest,
+  type CreateSharedMealBatchRequest,
   type RecipeWithIngredients,
   type MealEntryWithRecipe,
   type DaySummary,
@@ -48,6 +51,11 @@ export interface IStorage {
   getMealEntriesRange(startDate: string, endDate: string): Promise<MealEntryWithRecipe[]>;
   updateMealEntryIngredients(mealEntryId: number, ingredients: { ingredientId: number; amount: number }[]): Promise<void>;
   copyDayEntries(sourceDate: string, targetDate: string, replaceTarget?: boolean): Promise<number>;
+
+  // Shared meal batches
+  getSharedMealBatches(): Promise<any[]>;
+  createSharedMealBatch(input: CreateSharedMealBatchRequest): Promise<SharedMealBatch>;
+  archiveSharedMealBatch(id: number, isArchived: boolean): Promise<SharedMealBatch>;
 
   // Shopping List Checks
   getShoppingListChecks(periodStart: string, periodEnd: string): Promise<Record<number, boolean>>;
@@ -501,6 +509,47 @@ export class DatabaseStorage implements IStorage {
     });
 
     return rangedEntries as MealEntryWithRecipe[];
+  }
+
+  async getSharedMealBatches(): Promise<any[]> {
+    const batches = await db.query.sharedMealBatches.findMany({
+      where: eq(sharedMealBatches.isArchived, false),
+      with: {
+        recipe: {
+          with: {
+            ingredients: { with: { ingredient: true } },
+            frequentAddons: { with: { ingredient: true } },
+          },
+        },
+        mealEntries: true,
+      },
+      orderBy: (b, { desc }) => [desc(b.createdAt)],
+    });
+
+    return batches.map((batch: any) => {
+      const allocatedServings = (batch.mealEntries || []).reduce((sum: number, entry: any) => sum + (Number(entry.servings) || 0), 0);
+      return {
+        ...batch,
+        allocatedServings,
+        remainingServings: Math.max(0, (Number(batch.totalServings) || 0) - allocatedServings),
+      };
+    });
+  }
+
+  async createSharedMealBatch(input: CreateSharedMealBatchRequest): Promise<SharedMealBatch> {
+    const [created] = await db.insert(sharedMealBatches).values({
+      recipeId: input.recipeId,
+      totalServings: input.totalServings,
+      note: input.note,
+      isArchived: input.isArchived ?? false,
+    }).returning();
+    return created;
+  }
+
+  async archiveSharedMealBatch(id: number, isArchived: boolean): Promise<SharedMealBatch> {
+    const [updated] = await db.update(sharedMealBatches).set({ isArchived }).where(eq(sharedMealBatches.id, id)).returning();
+    if (!updated) throw new Error("Shared meal batch not found");
+    return updated;
   }
 
   async getShoppingListChecks(periodStart: string, periodEnd: string): Promise<Record<number, boolean>> {

@@ -16,9 +16,10 @@ import { cn } from "@/lib/utils";
 import { RecipeView } from "@/components/RecipeView";
 import { calculateScaledAmount } from "@shared/scaling";
 import { useToast } from "@/hooks/use-toast";
-import { Check, ChevronsUpDown } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Check, ChevronsUpDown, Soup } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { api } from "@shared/routes";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,6 +89,59 @@ export default function MealPlan() {
     },
   });
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [activeView, setActiveView] = useState<"plan" | "shared">("plan");
+  const [sharedRecipeId, setSharedRecipeId] = useState<number>(0);
+  const [sharedTotalServings, setSharedTotalServings] = useState<number>(6);
+  const [sharedNote, setSharedNote] = useState("");
+  const [allocationForms, setAllocationForms] = useState<Record<number, { date: string; mealType: string; person: "A" | "B"; servings: number }>>({});
+
+  const { data: sharedBatches = [] } = useQuery<any[]>({
+    queryKey: [api.sharedMeals.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.sharedMeals.list.path);
+      if (!res.ok) throw new Error("Nie udało się pobrać wspólnych posiłków");
+      return res.json();
+    },
+  });
+
+  const createSharedBatch = useMutation({
+    mutationFn: async () => {
+      const payload = { recipeId: sharedRecipeId, totalServings: sharedTotalServings, note: sharedNote || undefined };
+      const res = await fetch(api.sharedMeals.createBatch.path, {
+        method: api.sharedMeals.createBatch.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Nie udało się utworzyć partii");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
+      setSharedRecipeId(0);
+      setSharedTotalServings(6);
+      setSharedNote("");
+      toast({ title: "Dodano", description: "Nowa partia wspólnego posiłku została zapisana." });
+    },
+    onError: (error: any) => toast({ title: "Błąd", description: error?.message || "Nie udało się dodać partii", variant: "destructive" }),
+  });
+
+  const archiveBatch = useMutation({
+    mutationFn: async (id: number) => {
+      const path = api.sharedMeals.archiveBatch.path.replace(":id", String(id));
+      const res = await fetch(path, {
+        method: api.sharedMeals.archiveBatch.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isArchived: true }),
+      });
+      if (!res.ok) throw new Error("Nie udało się zarchiwizować partii");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] }),
+  });
   
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isCustomOpen, setIsCustomOpen] = useState(false);
@@ -602,6 +656,43 @@ export default function MealPlan() {
     copyDayPlan({ sourceDate: copySourceDate, targetDate: copyTargetDate });
   };
 
+  const getAllocationForm = (batchId: number) => allocationForms[batchId] || {
+    date: format(new Date(), "yyyy-MM-dd"),
+    mealType: "lunch",
+    person: "A" as "A" | "B",
+    servings: 1,
+  };
+
+  const updateAllocationForm = (batchId: number, updates: Partial<{ date: string; mealType: string; person: "A" | "B"; servings: number }>) => {
+    setAllocationForms((prev) => ({
+      ...prev,
+      [batchId]: { ...getAllocationForm(batchId), ...updates },
+    }));
+  };
+
+  const allocateFromBatch = (batch: any) => {
+    const form = getAllocationForm(batch.id);
+    const servings = Math.max(0.25, Number(form.servings) || 1);
+    if (servings > Number(batch.remainingServings || 0)) {
+      toast({ title: "Za dużo", description: "Liczba porcji przekracza pulę pozostałych porcji.", variant: "destructive" });
+      return;
+    }
+
+    addEntry({
+      date: form.date,
+      recipeId: Number(batch.recipeId),
+      mealType: form.mealType,
+      person: form.person,
+      servings,
+      cookedBatchId: Number(batch.id),
+    } as any, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
+        toast({ title: "Dodano", description: "Porcje zostały dodane do planu." });
+      },
+    });
+  };
+
   const filteredIngredients = useMemo(() => {
     if (!allAvailableIngredients) return [];
     if (!ingredientSearch.trim()) return allAvailableIngredients;
@@ -626,6 +717,13 @@ export default function MealPlan() {
           </button>
         </div>
       </div>
+      <div className="mb-4 inline-flex rounded-xl border bg-white p-1 shadow-sm">
+        <Button variant={activeView === "plan" ? "default" : "ghost"} size="sm" onClick={() => setActiveView("plan")}>Plan tygodniowy</Button>
+        <Button variant={activeView === "shared" ? "default" : "ghost"} size="sm" onClick={() => setActiveView("shared")}><Soup className="mr-1 h-4 w-4" />Wspólne posiłki</Button>
+      </div>
+
+      {activeView === "plan" && (
+      <>
       <section className="mb-6 rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-end">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 flex-1">
@@ -679,6 +777,55 @@ export default function MealPlan() {
           />
         ))}
       </div>
+      </>
+      )}
+
+      {activeView === "shared" && (
+        <section className="space-y-4">
+          <div className="rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-semibold mb-3">Nowe gotowanie wspólnego posiłku</h2>
+            <div className="grid gap-3 md:grid-cols-4">
+              <select className="h-10 rounded-md border px-3" value={sharedRecipeId || ""} onChange={(e) => setSharedRecipeId(Number(e.target.value) || 0)}>
+                <option value="">Wybierz przepis</option>
+                {(recipes || []).map((recipe: any) => <option key={recipe.id} value={recipe.id}>{recipe.name}</option>)}
+              </select>
+              <Input type="number" min={0.25} step={0.25} value={sharedTotalServings} onChange={(e) => setSharedTotalServings(Math.max(0.25, Number(e.target.value) || 1))} placeholder="Liczba porcji" />
+              <Input value={sharedNote} onChange={(e) => setSharedNote(e.target.value)} placeholder="Notatka (opcjonalnie)" />
+              <Button disabled={!sharedRecipeId || createSharedBatch.isPending} onClick={() => createSharedBatch.mutate()}>Dodaj do wspólnych</Button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {sharedBatches.length === 0 && <div className="text-sm text-muted-foreground">Brak aktywnych wspólnych posiłków.</div>}
+            {sharedBatches.map((batch: any) => {
+              const form = getAllocationForm(batch.id);
+              return (
+                <div key={batch.id} className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-semibold">{batch.recipe?.name}</p>
+                      <p className="text-xs text-muted-foreground">Ugotowane: {Number(batch.totalServings) || 0} porcji • W planie: {Number(batch.allocatedServings) || 0} • Pozostało: <span className="font-semibold text-emerald-700">{Number(batch.remainingServings) || 0}</span></p>
+                      {batch.note ? <p className="text-xs text-muted-foreground">{batch.note}</p> : null}
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => archiveBatch.mutate(batch.id)}>Archiwizuj</Button>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-5">
+                    <Input type="date" value={form.date} onChange={(e) => updateAllocationForm(batch.id, { date: e.target.value })} />
+                    <select className="h-10 rounded-md border px-3" value={form.mealType} onChange={(e) => updateAllocationForm(batch.id, { mealType: e.target.value })}>
+                      <option value="breakfast">Śniadanie</option><option value="lunch">Obiad</option><option value="dinner">Kolacja</option><option value="snack">Przekąska</option>
+                    </select>
+                    <select className="h-10 rounded-md border px-3" value={form.person} onChange={(e) => updateAllocationForm(batch.id, { person: (e.target.value as "A" | "B") })}>
+                      <option value="A">Tysia</option><option value="B">Mati</option>
+                    </select>
+                    <Input type="number" min={0.25} step={0.25} value={form.servings} onChange={(e) => updateAllocationForm(batch.id, { servings: Math.max(0.25, Number(e.target.value) || 1) })} />
+                    <Button disabled={(Number(batch.remainingServings) || 0) <= 0} onClick={() => allocateFromBatch(batch)}>Dodaj porcje do planu</Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <RecipeView 
         recipe={viewingRecipe}
@@ -931,6 +1078,15 @@ export default function MealPlan() {
                 <div className="grid gap-2">
                   <label className="text-xs font-medium text-muted-foreground">Porcje głównego przepisu</label>
                   <Input type="number" step="0.25" min={0.25} value={selectedRecipeServings} onChange={(e) => setSelectedRecipeServings(Math.max(0.25, Number(e.target.value) || 1))} className="h-8 w-28" />
+                </div>
+
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 text-xs text-emerald-900">
+                  <p className="font-semibold">Tip: gotowanie na kilka dni</p>
+                  <p>
+                    Ustaw tutaj łączną liczbę porcji, które ugotujesz za jednym razem (np. rosół: 6).
+                    Potem rozpisz tę samą potrawę na różne dni i osoby, zmieniając porcje już w planie dnia.
+                    Dodatki (np. pieczywo/pomidor) możesz ustawić osobno dla każdego wpisu.
+                  </p>
                 </div>
 
                 {suggestedRecipeOptionsForAdd.length > 0 && (
@@ -1762,7 +1918,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
             </div>
           ))}
         </div>
-      )}
+        )}
       {/* End of DaySection content */}
     </div>
   );

@@ -443,6 +443,41 @@ export async function registerRoutes(
     }
   });
 
+  app.get(api.sharedMeals.list.path, async (_req, res) => {
+    const batches = await storage.getSharedMealBatches();
+    res.json(batches);
+  });
+
+  app.post(api.sharedMeals.createBatch.path, async (req, res) => {
+    try {
+      const input = api.sharedMeals.createBatch.input.parse(req.body);
+      const batch = await storage.createSharedMealBatch(input as any);
+      res.status(201).json(batch);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.sharedMeals.archiveBatch.path, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { isArchived } = api.sharedMeals.archiveBatch.input.parse(req.body || {});
+      const batch = await storage.archiveSharedMealBatch(id, isArchived);
+      res.json(batch);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.message });
+      }
+      if (err instanceof Error && err.message.includes("not found")) {
+        return res.status(404).json({ message: "Nie znaleziono partii" });
+      }
+      throw err;
+    }
+  });
+
   app.patch("/api/meal-plan/entry/:id", async (req, res) => {
 
     try {
@@ -451,7 +486,7 @@ export async function registerRoutes(
       
       // Ensure we only pass fields that exist in the schema to storage.updateMealEntry
       const finalUpdates: any = {};
-      const allowedFields = ['servings', 'isEaten', 'person', 'customName', 'customCalories', 'customProtein', 'customCarbs', 'customFat', 'date', 'mealType'];
+      const allowedFields = ['servings', 'isEaten', 'person', 'customName', 'customCalories', 'customProtein', 'customCarbs', 'customFat', 'date', 'mealType', 'cookedBatchId'];
       
       for (const field of allowedFields) {
         if (updates[field] !== undefined) {

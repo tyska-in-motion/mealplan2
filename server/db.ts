@@ -187,5 +187,16 @@ export async function ensureDbCompat() {
   await pool.query(`DELETE FROM shopping_list_excluded_items a USING shopping_list_excluded_items b WHERE a.ctid < b.ctid AND a.ingredient_id = b.ingredient_id AND a.period_start = b.period_start AND a.period_end = b.period_end`);
   await pool.query(`ALTER TABLE shopping_list_excluded_items DROP CONSTRAINT IF EXISTS shopping_list_excluded_items_pkey`);
   await pool.query(`ALTER TABLE shopping_list_excluded_items ADD CONSTRAINT shopping_list_excluded_items_pkey PRIMARY KEY (ingredient_id, period_start, period_end)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS shared_meal_batches (
+    id serial PRIMARY KEY,
+    recipe_id integer NOT NULL,
+    total_servings real NOT NULL DEFAULT 1,
+    note text,
+    is_archived boolean NOT NULL DEFAULT false,
+    created_at timestamp DEFAULT now()
+  )`);
+
+  await pool.query(`ALTER TABLE meal_entries ADD COLUMN IF NOT EXISTS cooked_batch_id integer`);
+
 
 }
