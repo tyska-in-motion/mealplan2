@@ -95,6 +95,7 @@ export default function MealPlan() {
   const [sharedTotalServings, setSharedTotalServings] = useState<number>(6);
   const [sharedNote, setSharedNote] = useState("");
   const [allocationForms, setAllocationForms] = useState<Record<number, { date: string; mealType: string; person: "A" | "B"; servings: number }>>({});
+  const [isViewingSharedDayRecipe, setIsViewingSharedDayRecipe] = useState(false);
 
   const { data: sharedBatches = [] } = useQuery<any[]>({
     queryKey: [api.sharedMeals.list.path],
@@ -672,7 +673,10 @@ export default function MealPlan() {
 
   const allocateFromBatch = (batch: any) => {
     const form = getAllocationForm(batch.id);
+    const person = form.person;
     const servings = Math.max(0.25, Number(form.servings) || 1);
+    const addonsForPerson = selectedFrequentAddons[person] || {};
+
     if (servings > Number(batch.remainingServings || 0)) {
       toast({ title: "Za dużo", description: "Liczba porcji przekracza pulę pozostałych porcji.", variant: "destructive" });
       return;
@@ -682,13 +686,45 @@ export default function MealPlan() {
       date: form.date,
       recipeId: Number(batch.recipeId),
       mealType: form.mealType,
-      person: form.person,
+      person,
       servings,
       cookedBatchId: Number(batch.id),
     } as any, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
-        toast({ title: "Dodano", description: "Porcje zostały dodane do planu." });
+      onSuccess: async (entry) => {
+        const selectedAddons = (batch?.recipe?.frequentAddons || [])
+          .map((addon: any) => ({
+            ingredientId: Number(addon.ingredientId),
+            amount: Number(addonsForPerson[addon.ingredientId] || 0),
+          }))
+          .filter((addon: any) => addon.amount > 0);
+
+        if (selectedAddons.length === 0) {
+          queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
+          toast({ title: "Dodano", description: "Porcje zostały dodane do planu." });
+          return;
+        }
+
+        const baseIngredients = (batch?.recipe?.ingredients || []).map((ri: any) => ({
+          ingredientId: Number(ri.ingredientId),
+          amount: Number(ri.amount) || 0,
+        }));
+
+        updateMealEntry({
+          id: entry.id,
+          updates: {
+            ingredients: [...baseIngredients, ...selectedAddons],
+            servings,
+          },
+        }, {
+          onSuccess: () => {
+            setSelectedFrequentAddons((prev) => ({
+              ...prev,
+              [person]: {},
+            }));
+            queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
+            toast({ title: "Dodano", description: "Porcje i dodatki zostały dodane do planu." });
+          },
+        });
       },
     });
   };
@@ -799,6 +835,7 @@ export default function MealPlan() {
             {sharedBatches.length === 0 && <div className="text-sm text-muted-foreground">Brak aktywnych wspólnych posiłków.</div>}
             {sharedBatches.map((batch: any) => {
               const form = getAllocationForm(batch.id);
+              const batchDate = form.date || format(new Date(), "yyyy-MM-dd");
               return (
                 <div key={batch.id} className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -807,7 +844,26 @@ export default function MealPlan() {
                       <p className="text-xs text-muted-foreground">Ugotowane: {Number(batch.totalServings) || 0} porcji • W planie: {Number(batch.allocatedServings) || 0} • Pozostało: <span className="font-semibold text-emerald-700">{Number(batch.remainingServings) || 0}</span></p>
                       {batch.note ? <p className="text-xs text-muted-foreground">{batch.note}</p> : null}
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => archiveBatch.mutate(batch.id)}>Archiwizuj</Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setViewingRecipe(batch.recipe);
+                          setViewingMeal({
+                            servings: Number(batch.totalServings) || 1,
+                            ingredients: batch.recipe?.ingredients || [],
+                            date: batchDate,
+                          });
+                          setViewingServings(Number(batch.totalServings) || 1);
+                          setIsSharedRecipeView(true);
+                          setIsViewingSharedDayRecipe(true);
+                        }}
+                      >
+                        Pokaż przepis dnia
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => archiveBatch.mutate(batch.id)}>Archiwizuj</Button>
+                    </div>
                   </div>
                   <div className="mt-3 grid gap-2 md:grid-cols-5">
                     <Input type="date" value={form.date} onChange={(e) => updateAllocationForm(batch.id, { date: e.target.value })} />
@@ -820,6 +876,49 @@ export default function MealPlan() {
                     <Input type="number" min={0.25} step={0.25} value={form.servings} onChange={(e) => updateAllocationForm(batch.id, { servings: Math.max(0.25, Number(e.target.value) || 1) })} />
                     <Button disabled={(Number(batch.remainingServings) || 0) <= 0} onClick={() => allocateFromBatch(batch)}>Dodaj porcje do planu</Button>
                   </div>
+
+                  {(batch?.recipe?.frequentAddons || []).length > 0 && (
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Dodatki wspólne dla {personName[form.person]}</p>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-emerald-700 underline underline-offset-2"
+                          onClick={() => setSelectedFrequentAddons((prev) => ({ ...prev, [form.person]: {} }))}
+                        >
+                          Wyczyść
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {(batch.recipe.frequentAddons || []).map((addon: any) => {
+                          const addonStep = getAddonBaseAmount(addon);
+                          const currentAmount = Number(selectedFrequentAddons[form.person]?.[addon.ingredientId] || 0);
+                          return (
+                            <div key={`shared-addon-${batch.id}-${form.person}-${addon.ingredientId}`} className="flex items-center justify-between gap-2 rounded-lg border border-emerald-100 bg-white p-2">
+                              <span className="text-sm font-medium">{addon.ingredient?.name || "Składnik"}</span>
+                              <div className="flex items-center gap-1">
+                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setAddonAmount(Number(addon.ingredientId), currentAmount - addonStep, form.person)}>
+                                  <Minus className="h-3.5 w-3.5" />
+                                </Button>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  step={Math.max(1, addonStep)}
+                                  value={currentAmount}
+                                  onChange={(e) => setAddonAmount(Number(addon.ingredientId), Number(e.target.value) || 0, form.person)}
+                                  className="h-8 w-20 text-center"
+                                />
+                                <span className="text-xs text-muted-foreground">g</span>
+                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setAddonAmount(Number(addon.ingredientId), currentAmount + addonStep, form.person)}>
+                                  <Plus className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -835,6 +934,7 @@ export default function MealPlan() {
           setViewingMeal(null);
           setViewingServings(undefined);
           setIsSharedRecipeView(false);
+          setIsViewingSharedDayRecipe(false);
         }}
         plannedServings={viewingServings}
         mealEntryIngredients={viewingMeal?.ingredients}
@@ -843,7 +943,7 @@ export default function MealPlan() {
         onEditIngredients={viewingMeal ? startEditing : undefined}
         allowIngredientEditing={!isSharedRecipeView}
         usePrecalculatedAmounts={isSharedRecipeView}
-        showFooter={!viewingMeal}
+        showFooter={!viewingMeal && !isViewingSharedDayRecipe}
         onAddToPlan={(recipe) => {
           setViewingRecipe(null);
           setViewingServings(undefined);
