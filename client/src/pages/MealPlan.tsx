@@ -1892,7 +1892,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
 
                       <div className="space-y-3 flex-1">
                         {entries.map((entry: any) => (
-                          <div key={entry.id} className="group relative flex items-center gap-3 bg-background p-2 rounded-xl border border-border">
+                          <div key={entry.id} className="group relative flex items-center gap-2 bg-background p-2 rounded-xl border border-border overflow-hidden">
                             <input
                               type="checkbox"
                               checked={!!selectedEntries[entry.id]}
@@ -1923,7 +1923,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
                                   {entry.ingredients?.length ? `${entry.ingredients[0]?.amount || 0} g` : "Custom Item"}
                                 </p>
                               )}
-                              <div className="flex items-center gap-1 mt-1">
+                              <div className="flex flex-wrap items-center gap-1 mt-1">
                                 {!entry.recipe && entry.ingredients?.length ? (
                                   <>
                                     <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
@@ -1946,7 +1946,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
                                     <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0 rounded-full" onClick={() => onUpdateEntry(entry.id, { servings: Math.max(0.5, (Number(entry.servings) || 1) - 0.5) })}>
                                       <Minus className="h-3 w-3" />
                                     </Button>
-                                    <div className="flex items-center gap-1 min-w-0">
+                                    <div className="flex items-center gap-1 min-w-0 shrink">
                                       <Input
                                         type="number"
                                         inputMode="decimal"
@@ -1964,7 +1964,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
                                         aria-label="Liczba porcji"
                                       />
                                       {entry.recipe && (
-                                        <span className="text-[8px] sm:text-[9px] font-medium text-muted-foreground whitespace-nowrap">/ {Number(entry.recipe.servings) || 1}</span>
+                                        <span className="text-[8px] sm:text-[9px] font-medium text-muted-foreground whitespace-nowrap shrink-0">/ {Number(entry.recipe.servings) || 1}</span>
                                       )}
                                     </div>
                                     <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0 rounded-full" onClick={() => onUpdateEntry(entry.id, { servings: (Number(entry.servings) || 1) + 0.5 })}>
