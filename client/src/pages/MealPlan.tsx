@@ -96,15 +96,45 @@ export default function MealPlan() {
 
   return (
     <Layout>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Meal Plan – kalendarz</h1>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="min-w-44 text-center font-semibold">
-              {format(currentMonth, "LLLL yyyy", { locale: pl })}
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-3xl font-bold">Plan Tygodniowy (widok okienek)</h1>
+        <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white p-2 shadow-sm sm:w-auto sm:justify-start sm:gap-4">
+          <button onClick={() => setBaseDate(d => subDays(d, 7))} className="p-2 hover:bg-muted rounded-lg transition-colors">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <span className="min-w-0 flex-1 text-center text-sm font-semibold tabular-nums sm:w-48 sm:flex-none sm:text-base">
+            {format(weekDays[0], "d MMM", { locale: pl })} - {format(weekDays[6], "d MMM, yyyy", { locale: pl })}
+          </span>
+          <button onClick={() => setBaseDate(d => addDays(d, 7))} className="p-2 hover:bg-muted rounded-lg transition-colors">
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+      <div className="mb-4 inline-flex rounded-xl border bg-white p-1 shadow-sm">
+        <Button variant={activeView === "plan" ? "default" : "ghost"} size="sm" onClick={() => setActiveView("plan")}>Plan tygodniowy</Button>
+        <Button variant={activeView === "shared" ? "default" : "ghost"} size="sm" onClick={() => setActiveView("shared")}><Soup className="mr-1 h-4 w-4" />Wspólne posiłki</Button>
+      </div>
+
+      {activeView === "plan" && (
+      <>
+      <section className="mb-6 rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 flex-1">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Kopiuj z dnia</label>
+              <Input
+                type="date"
+                value={copySourceDate}
+                onChange={(e) => setCopySourceDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Wklej do dnia</label>
+              <Input
+                type="date"
+                value={copyTargetDate}
+                onChange={(e) => setCopyTargetDate(e.target.value)}
+              />
             </div>
             <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
               <ChevronRight className="h-4 w-4" />
