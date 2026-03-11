@@ -175,19 +175,24 @@ export async function registerRoutes(
     const ingredientId = req.query.ingredientId ? Number(req.query.ingredientId) : undefined;
     let items = await storage.getRecipes(search, ingredientId);
     
-    // Get all meal entries to calculate frequencies
+    // Get all meal entries to calculate frequencies (shared batches count as single cooking event)
     const allEntries = await storage.getMealEntriesRange("2000-01-01", "2100-01-01");
     const frequencyMap = new Map<number, number>();
-    const recipeDaysMap = new Map<number, Set<string>>();
-    allEntries.forEach(entry => {
+    const recipeEventsMap = new Map<number, Set<string>>();
+    allEntries.forEach((entry: any) => {
       if (!entry.recipeId || !entry.date) return;
       const recipeId = Number(entry.recipeId);
-      const days = recipeDaysMap.get(recipeId) || new Set<string>();
-      days.add(entry.date);
-      recipeDaysMap.set(recipeId, days);
+      const events = recipeEventsMap.get(recipeId) || new Set<string>();
+      const batchId = Number(entry.cookedBatchId || 0);
+      if (batchId > 0) {
+        events.add(`batch:${batchId}`);
+      } else {
+        events.add(`day:${entry.date}`);
+      }
+      recipeEventsMap.set(recipeId, events);
     });
-    recipeDaysMap.forEach((days, recipeId) => {
-      frequencyMap.set(recipeId, days.size);
+    recipeEventsMap.forEach((events, recipeId) => {
+      frequencyMap.set(recipeId, events.size);
     });
 
     const itemsWithStats = items.map(r => {
