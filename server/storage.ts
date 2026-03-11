@@ -7,6 +7,7 @@ import {
   recipeFrequentAddons,
   mealEntries,
   sharedMealBatches,
+  sharedMealBatchLogs,
   userSettings,
   shoppingListChecks,
   shoppingListExtras,
@@ -16,6 +17,7 @@ import {
   type Recipe,
   type MealEntry,
   type SharedMealBatch,
+  type SharedMealBatchLog,
   type CreateIngredientRequest,
   type CreateRecipeRequest,
   type CreateMealEntryRequest,
@@ -54,7 +56,10 @@ export interface IStorage {
 
   // Shared meal batches
   getSharedMealBatches(): Promise<any[]>;
+  getArchivedSharedMealBatches(): Promise<any[]>;
+  getSharedMealBatchLogs(batchId: number): Promise<SharedMealBatchLog[]>;
   createSharedMealBatch(input: CreateSharedMealBatchRequest): Promise<SharedMealBatch>;
+  updateSharedMealBatch(id: number, updates: Partial<Pick<SharedMealBatch, "totalServings" | "note">>): Promise<SharedMealBatch>;
   archiveSharedMealBatch(id: number, isArchived: boolean): Promise<SharedMealBatch>;
 
   // Shopping List Checks
@@ -90,6 +95,7 @@ export class DatabaseStorage implements IStorage {
           targetProtein: seed?.targetProtein ?? 150,
           targetCarbs: seed?.targetCarbs ?? 200,
           targetFat: seed?.targetFat ?? 65,
+          sharedBatchesManualOnly: seed?.sharedBatchesManualOnly ?? true,
         }).returning();
         byPerson.set(person, created);
       }
@@ -380,8 +386,10 @@ export class DatabaseStorage implements IStorage {
     if (entry.recipeId && !cookedBatchId) {
       const recipe = await this.getRecipe(Number(entry.recipeId));
       const recipeServings = Number(recipe?.servings) || 1;
+      const settings = await this.getUserSettings();
+      const manualOnly = !!settings?.A?.sharedBatchesManualOnly;
 
-      if (recipe && recipeServings > 1) {
+      if (!manualOnly && recipe && recipeServings > 1) {
         const requestedServings = Number(entry.servings) || 1;
         const activeBatches = await this.getSharedMealBatches();
         const existingBatch = activeBatches.find((batch: any) => (
@@ -549,8 +557,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSharedMealBatches(): Promise<any[]> {
+    return this.getSharedMealBatchesByArchived(false);
+  }
+
+  async getArchivedSharedMealBatches(): Promise<any[]> {
+    return this.getSharedMealBatchesByArchived(true);
+  }
+
+  private async getSharedMealBatchesByArchived(isArchived: boolean): Promise<any[]> {
     const batches = await db.query.sharedMealBatches.findMany({
-      where: eq(sharedMealBatches.isArchived, false),
+      where: eq(sharedMealBatches.isArchived, isArchived),
       with: {
         recipe: {
           with: {
@@ -559,6 +575,7 @@ export class DatabaseStorage implements IStorage {
           },
         },
         mealEntries: true,
+        logs: true,
       },
       orderBy: (b, { desc }) => [desc(b.createdAt)],
     });
@@ -569,7 +586,15 @@ export class DatabaseStorage implements IStorage {
         ...batch,
         allocatedServings,
         remainingServings: Math.max(0, (Number(batch.totalServings) || 0) - allocatedServings),
+        logs: (batch.logs || []).sort((a: any, b: any) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt))),
       };
+    });
+  }
+
+  async getSharedMealBatchLogs(batchId: number): Promise<SharedMealBatchLog[]> {
+    return db.query.sharedMealBatchLogs.findMany({
+      where: eq(sharedMealBatchLogs.batchId, batchId),
+      orderBy: (logs, { desc }) => [desc(logs.createdAt)],
     });
   }
 
@@ -580,12 +605,49 @@ export class DatabaseStorage implements IStorage {
       note: input.note,
       isArchived: input.isArchived ?? false,
     }).returning();
+    await db.insert(sharedMealBatchLogs).values({
+      batchId: created.id,
+      action: "CREATED",
+      payload: {
+        recipeId: created.recipeId,
+        totalServings: created.totalServings,
+        note: created.note,
+      },
+    });
     return created;
+  }
+
+  async updateSharedMealBatch(id: number, updates: Partial<Pick<SharedMealBatch, "totalServings" | "note">>): Promise<SharedMealBatch> {
+    const previous = await db.query.sharedMealBatches.findFirst({ where: eq(sharedMealBatches.id, id) });
+    if (!previous) throw new Error("Shared meal batch not found");
+
+    const payload: Partial<SharedMealBatch> = {};
+    if (updates.totalServings !== undefined) payload.totalServings = updates.totalServings;
+    if (updates.note !== undefined) payload.note = updates.note;
+
+    const [updated] = await db.update(sharedMealBatches).set(payload).where(eq(sharedMealBatches.id, id)).returning();
+    if (!updated) throw new Error("Shared meal batch not found");
+
+    await db.insert(sharedMealBatchLogs).values({
+      batchId: id,
+      action: "UPDATED",
+      payload: {
+        before: { totalServings: previous.totalServings, note: previous.note },
+        after: { totalServings: updated.totalServings, note: updated.note },
+      },
+    });
+
+    return updated;
   }
 
   async archiveSharedMealBatch(id: number, isArchived: boolean): Promise<SharedMealBatch> {
     const [updated] = await db.update(sharedMealBatches).set({ isArchived }).where(eq(sharedMealBatches.id, id)).returning();
     if (!updated) throw new Error("Shared meal batch not found");
+    await db.insert(sharedMealBatchLogs).values({
+      batchId: id,
+      action: isArchived ? "ARCHIVED" : "UNARCHIVED",
+      payload: { isArchived },
+    });
     return updated;
   }
 

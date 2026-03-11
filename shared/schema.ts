@@ -42,6 +42,7 @@ export const userSettings = pgTable("user_settings", {
   targetProtein: integer("target_protein").notNull().default(150),
   targetCarbs: integer("target_carbs").notNull().default(200),
   targetFat: integer("target_fat").notNull().default(65),
+  sharedBatchesManualOnly: boolean("shared_batches_manual_only").notNull().default(true),
 });
 
 export const recipes = pgTable("recipes", {
@@ -96,6 +97,14 @@ export const sharedMealBatches = pgTable("shared_meal_batches", {
   totalServings: real("total_servings").notNull().default(1),
   note: text("note"),
   isArchived: boolean("is_archived").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const sharedMealBatchLogs = pgTable("shared_meal_batch_logs", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").notNull(),
+  action: text("action").notNull(),
+  payload: jsonb("payload").$type<Record<string, any>>(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -169,6 +178,14 @@ export const sharedMealBatchesRelations = relations(sharedMealBatches, ({ one, m
     references: [recipes.id],
   }),
   mealEntries: many(mealEntries),
+  logs: many(sharedMealBatchLogs),
+}));
+
+export const sharedMealBatchLogsRelations = relations(sharedMealBatchLogs, ({ one }) => ({
+  batch: one(sharedMealBatches, {
+    fields: [sharedMealBatchLogs.batchId],
+    references: [sharedMealBatches.id],
+  }),
 }));
 export const mealEntriesRelations = relations(mealEntries, ({ one, many }) => ({
   recipe: one(recipes, {
@@ -232,6 +249,7 @@ export const insertRecipeIngredientSchema = createInsertSchema(recipeIngredients
 export const insertRecipeFrequentAddonSchema = createInsertSchema(recipeFrequentAddons).omit({ id: true });
 export const insertMealEntrySchema = createInsertSchema(mealEntries).omit({ id: true, createdAt: true });
 export const insertSharedMealBatchSchema = createInsertSchema(sharedMealBatches).omit({ id: true, createdAt: true });
+export const insertSharedMealBatchLogSchema = createInsertSchema(sharedMealBatchLogs).omit({ id: true, createdAt: true });
 export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({ id: true });
 
 export type Ingredient = typeof ingredients.$inferSelect;
@@ -240,6 +258,7 @@ export type RecipeIngredient = typeof recipeIngredients.$inferSelect;
 export type RecipeFrequentAddon = typeof recipeFrequentAddons.$inferSelect;
 export type MealEntry = typeof mealEntries.$inferSelect;
 export type SharedMealBatch = typeof sharedMealBatches.$inferSelect;
+export type SharedMealBatchLog = typeof sharedMealBatchLogs.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
 
 export type CreateIngredientRequest = z.infer<typeof insertIngredientSchema>;

@@ -454,8 +454,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get(api.sharedMeals.list.path, async (_req, res) => {
-    const batches = await storage.getSharedMealBatches();
+  app.get(api.sharedMeals.list.path, async (req, res) => {
+    const includeArchived = String(req.query.includeArchived || "false") === "true";
+    const batches = includeArchived
+      ? await storage.getArchivedSharedMealBatches()
+      : await storage.getSharedMealBatches();
     res.json(batches);
   });
 
@@ -487,6 +490,32 @@ export async function registerRoutes(
       }
       throw err;
     }
+  });
+
+  app.patch(api.sharedMeals.updateBatch.path, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const updates = api.sharedMeals.updateBatch.input.parse(req.body || {});
+      const batch = await storage.updateSharedMealBatch(id, {
+        ...updates,
+        note: updates.note === null ? null : updates.note,
+      });
+      res.json(batch);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.message });
+      }
+      if (err instanceof Error && err.message.includes("not found")) {
+        return res.status(404).json({ message: "Nie znaleziono partii" });
+      }
+      throw err;
+    }
+  });
+
+  app.get(api.sharedMeals.logs.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const logs = await storage.getSharedMealBatchLogs(id);
+    res.json(logs);
   });
 
   app.patch("/api/meal-plan/entry/:id", async (req, res) => {
@@ -761,6 +790,7 @@ export async function registerRoutes(
         targetProtein: z.number().optional(),
         targetCarbs: z.number().optional(),
         targetFat: z.number().optional(),
+        sharedBatchesManualOnly: z.boolean().optional(),
       }).parse(req.body);
 
       const { person, ...updates } = input;

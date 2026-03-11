@@ -95,7 +95,12 @@ export default function MealPlan() {
   const [sharedTotalServings, setSharedTotalServings] = useState<number>(6);
   const [sharedNote, setSharedNote] = useState("");
   const [allocationForms, setAllocationForms] = useState<Record<number, { date: string; mealType: string; person: "A" | "B"; servings: number }>>({});
+  const [batchEdits, setBatchEdits] = useState<Record<number, { totalServings: number; note: string }>>({});
   const [isViewingSharedDayRecipe, setIsViewingSharedDayRecipe] = useState(false);
+
+  const { data: userSettings } = useQuery<any>({
+    queryKey: ["/api/user-settings"],
+  });
 
   const { data: sharedBatches = [] } = useQuery<any[]>({
     queryKey: [api.sharedMeals.list.path],
@@ -103,6 +108,31 @@ export default function MealPlan() {
       const res = await fetch(api.sharedMeals.list.path);
       if (!res.ok) throw new Error("Nie udało się pobrać wspólnych posiłków");
       return res.json();
+    },
+  });
+
+  const { data: archivedSharedBatches = [] } = useQuery<any[]>({
+    queryKey: [api.sharedMeals.list.path, "archived"],
+    queryFn: async () => {
+      const res = await fetch(`${api.sharedMeals.list.path}?includeArchived=true`);
+      if (!res.ok) throw new Error("Nie udało się pobrać archiwalnych wspólnych posiłków");
+      return res.json();
+    },
+  });
+
+  const updateManualMode = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await fetch("/api/user-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ person: "A", sharedBatchesManualOnly: enabled }),
+      });
+      if (!res.ok) throw new Error("Nie udało się zmienić trybu partii");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-settings"] });
+      toast({ title: "Zapisano", description: "Tryb partii został zaktualizowany." });
     },
   });
 
@@ -131,17 +161,39 @@ export default function MealPlan() {
   });
 
   const archiveBatch = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async ({ id, isArchived }: { id: number; isArchived: boolean }) => {
       const path = api.sharedMeals.archiveBatch.path.replace(":id", String(id));
       const res = await fetch(path, {
         method: api.sharedMeals.archiveBatch.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isArchived: true }),
+        body: JSON.stringify({ isArchived }),
       });
       if (!res.ok) throw new Error("Nie udało się zarchiwizować partii");
       return res.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path, "archived"] });
+    },
+  });
+
+  const updateBatch = useMutation({
+    mutationFn: async ({ id, totalServings, note }: { id: number; totalServings: number; note: string }) => {
+      const path = api.sharedMeals.updateBatch.path.replace(":id", String(id));
+      const res = await fetch(path, {
+        method: api.sharedMeals.updateBatch.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ totalServings: Math.max(0.25, totalServings), note: note.trim() || null }),
+      });
+      if (!res.ok) throw new Error("Nie udało się zapisać zmian partii");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path, "archived"] });
+      toast({ title: "Zapisano", description: "Partia została zaktualizowana." });
+    },
+    onError: (error: any) => toast({ title: "Błąd", description: error?.message || "Nie udało się zapisać partii", variant: "destructive" }),
   });
   
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -671,6 +723,22 @@ export default function MealPlan() {
     }));
   };
 
+  const getBatchEdit = (batch: any) => batchEdits[batch.id] || {
+    totalServings: Number(batch.totalServings) || 1,
+    note: batch.note || "",
+  };
+
+  const updateBatchEdit = (batchId: number, updates: Partial<{ totalServings: number; note: string }>, fallbackBatch?: any) => {
+    const fallback = fallbackBatch ? {
+      totalServings: Number(fallbackBatch.totalServings) || 1,
+      note: fallbackBatch.note || "",
+    } : { totalServings: 1, note: "" };
+    setBatchEdits((prev) => ({
+      ...prev,
+      [batchId]: { ...(prev[batchId] || fallback), ...updates },
+    }));
+  };
+
   const allocateFromBatch = (batch: any) => {
     const form = getAllocationForm(batch.id);
     const person = form.person;
@@ -821,6 +889,17 @@ export default function MealPlan() {
       {activeView === "shared" && (
         <section className="space-y-4">
           <div className="rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!userSettings?.A?.sharedBatchesManualOnly}
+                onChange={(e) => updateManualMode.mutate(e.target.checked)}
+              />
+              Tryb manual only dla partii (bez auto-tworzenia partii przy dodawaniu przepisu)
+            </label>
+          </div>
+
+          <div className="rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
             <h2 className="text-lg font-semibold mb-3">Nowe gotowanie wspólnego posiłku</h2>
             <div className="grid gap-3 md:grid-cols-4">
               <select className="h-10 rounded-md border px-3" value={sharedRecipeId || ""} onChange={(e) => setSharedRecipeId(Number(e.target.value) || 0)}>
@@ -864,8 +943,23 @@ export default function MealPlan() {
                       >
                         Pokaż przepis dnia
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => archiveBatch.mutate(batch.id)}>Archiwizuj</Button>
+                      <Button variant="ghost" size="sm" onClick={() => archiveBatch.mutate({ id: batch.id, isArchived: true })}>Archiwizuj</Button>
                     </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3">
+                    <Input
+                      type="number"
+                      min={0.25}
+                      step={0.25}
+                      value={getBatchEdit(batch).totalServings}
+                      onChange={(e) => updateBatchEdit(batch.id, { totalServings: Math.max(0.25, Number(e.target.value) || 1) }, batch)}
+                    />
+                    <Input
+                      value={getBatchEdit(batch).note}
+                      onChange={(e) => updateBatchEdit(batch.id, { note: e.target.value }, batch)}
+                      placeholder="Notatka"
+                    />
+                    <Button onClick={() => updateBatch.mutate({ id: batch.id, ...getBatchEdit(batch) })}>Zapisz korekty</Button>
                   </div>
                   <div className="mt-3 grid gap-2 md:grid-cols-5">
                     <Input type="date" value={form.date} onChange={(e) => updateAllocationForm(batch.id, { date: e.target.value })} />
@@ -878,6 +972,26 @@ export default function MealPlan() {
                     <Input type="number" min={0.25} step={0.25} value={form.servings} onChange={(e) => updateAllocationForm(batch.id, { servings: Math.max(0.25, Number(e.target.value) || 1) })} />
                     <Button disabled={(Number(batch.remainingServings) || 0) <= 0} onClick={() => allocateFromBatch(batch)}>Dodaj porcje do planu</Button>
                   </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[0.5, 1, 1.5, 2].map((preset) => (
+                      <Button key={`preset-${batch.id}-${preset}`} variant="outline" size="sm" onClick={() => updateAllocationForm(batch.id, { servings: preset })}>
+                        {preset} porcji
+                      </Button>
+                    ))}
+                  </div>
+
+                  {(batch.logs || []).length > 0 && (
+                    <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dziennik zmian</p>
+                      <div className="mt-1 space-y-1">
+                        {batch.logs.slice(0, 6).map((log: any) => (
+                          <p key={`log-${log.id}`} className="text-xs text-muted-foreground">
+                            {format(new Date(log.createdAt), "yyyy-MM-dd HH:mm")} • {log.action}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {(batch?.recipe?.frequentAddons || []).length > 0 && (
                     <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
@@ -924,6 +1038,22 @@ export default function MealPlan() {
                 </div>
               );
             })}
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Archiwum partii</h3>
+            {archivedSharedBatches.length === 0 && <div className="text-sm text-muted-foreground">Brak zarchiwizowanych partii.</div>}
+            {archivedSharedBatches.map((batch: any) => (
+              <div key={`archived-${batch.id}`} className="rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">{batch.recipe?.name}</p>
+                    <p className="text-xs text-muted-foreground">Ugotowane: {Number(batch.totalServings) || 0} porcji</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => archiveBatch.mutate({ id: batch.id, isArchived: false })}>Przywróć</Button>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}
@@ -1617,13 +1747,15 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
 
     personEntries.A.forEach((entry: any) => {
       if (!entry.recipeId) return;
-      const key = `${entry.mealType}__${entry.recipeId}`;
+      const batchId = Number(entry.cookedBatchId || 0);
+      const key = batchId > 0 ? `batch:${batchId}` : `fallback:${entry.mealType}__${entry.recipeId}`;
       sharedMap.set(key, { A: entry, B: null as any });
     });
 
     personEntries.B.forEach((entry: any) => {
       if (!entry.recipeId) return;
-      const key = `${entry.mealType}__${entry.recipeId}`;
+      const batchId = Number(entry.cookedBatchId || 0);
+      const key = batchId > 0 ? `batch:${batchId}` : `fallback:${entry.mealType}__${entry.recipeId}`;
       const current = sharedMap.get(key);
       if (current?.A) {
         current.B = entry;
