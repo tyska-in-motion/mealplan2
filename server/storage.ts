@@ -49,7 +49,7 @@ export interface IStorage {
   updateMealEntry(id: number, updates: Partial<MealEntry> & { servings?: number }): Promise<MealEntry>;
   deleteMealEntry(id: number): Promise<void>;
   getMealEntriesRange(startDate: string, endDate: string): Promise<MealEntryWithRecipe[]>;
-  updateMealEntryIngredients(mealEntryId: number, ingredients: { ingredientId: number; amount: number }[]): Promise<void>;
+  updateMealEntryIngredients(mealEntryId: number, ingredients: { ingredientId: number; amount: number; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA" }[]): Promise<void>;
   copyDayEntries(sourceDate: string, targetDate: string, replaceTarget?: boolean): Promise<number>;
 
   // Shared meal batches
@@ -383,7 +383,8 @@ export class DatabaseStorage implements IStorage {
           recipe.ingredients.map(ri => ({
             mealEntryId: newEntry.id,
             ingredientId: ri.ingredientId,
-            amount: Math.round(Number(ri.baseAmount ?? ri.amount) || 0) // immutable base snapshot
+            amount: Math.round(Number(ri.baseAmount ?? ri.amount) || 0), // immutable base snapshot
+            scalingType: ri.scalingType || "LINEAR"
           }))
         );
       }
@@ -403,7 +404,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateMealEntryIngredients(mealEntryId: number, ingredientsList: { ingredientId: number; amount: number }[]): Promise<void> {
+  async updateMealEntryIngredients(mealEntryId: number, ingredientsList: { ingredientId: number; amount: number; scalingType?: "LINEAR" | "FIXED" | "STEP" | "FORMULA" }[]): Promise<void> {
     await db.transaction(async (tx) => {
       // Delete existing and insert new in one transaction
       await tx.delete(mealEntryIngredients).where(eq(mealEntryIngredients.mealEntryId, mealEntryId));
@@ -412,7 +413,8 @@ export class DatabaseStorage implements IStorage {
           ingredientsList.map(i => ({
             mealEntryId,
             ingredientId: i.ingredientId,
-            amount: i.amount
+            amount: i.amount,
+            scalingType: i.scalingType || "FIXED"
           }))
         );
       }
@@ -462,6 +464,7 @@ export class DatabaseStorage implements IStorage {
             mealEntryId: copiedEntry.id,
             ingredientId: ingredient.ingredientId,
             amount: ingredient.amount,
+            scalingType: ingredient.scalingType || "LINEAR",
           })));
         }
       }

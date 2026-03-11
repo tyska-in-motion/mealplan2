@@ -121,6 +121,7 @@ export default function Dashboard() {
   };
 
   const getEffectiveIngredientAmount = (entry: any, ri: any) => {
+    if (ri?.scalingType === "FIXED") return Number(ri?.amount) || 0;
     if (typeof ri?.calculatedAmount === "number") return ri.calculatedAmount;
     const factor = getEntryIngredientServingFactor(entry, ri.ingredientId);
     return (Number(ri?.amount) || 0) * factor;
@@ -166,7 +167,7 @@ export default function Dashboard() {
         amount: Math.round(calculateScaledAmount(ingredientForScaling as any, entryServings, recipeServings)),
         ingredient: ri.ingredient,
         isFrequentAddon,
-        scalingType: ingredientForScaling.scalingType,
+        scalingType: "FIXED",
         scalingFormula: ingredientForScaling.scalingFormula,
         stepThresholds: ingredientForScaling.stepThresholds,
       };
@@ -251,6 +252,7 @@ export default function Dashboard() {
       .map(i => ({ 
         ingredientId: Number(i.ingredientId), 
         amount: convertDisplayedAmountToStoredAmount(i, entryServings, recipeServings),
+        scalingType: "FIXED",
       }));
 
     if (ingredientsData.length === 0) {
@@ -897,7 +899,13 @@ export default function Dashboard() {
                   <h3 className="uppercase text-xs font-bold text-muted-foreground tracking-wider mb-4">{type}</h3>
                   <div className="space-y-3">
                     {meals.map((meal: any) => (
-                      <div key={meal.id} className="flex items-center justify-between group">
+                      <div
+                        key={meal.id}
+                        className={cn(
+                          "flex items-center justify-between group rounded-xl border p-2.5 transition-colors",
+                          meal.isEaten ? "border-emerald-300 bg-emerald-100" : "border-transparent"
+                        )}
+                      >
                         <div className="flex items-center gap-4">
                           <button 
                             onClick={() => toggleEaten({ id: meal.id, isEaten: !meal.isEaten })}

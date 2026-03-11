@@ -122,6 +122,7 @@ export const mealEntryIngredients = pgTable("meal_entry_ingredients", {
   mealEntryId: integer("meal_entry_id").notNull(),
   ingredientId: integer("ingredient_id").notNull(),
   amount: integer("amount").notNull(),
+  scalingType: ingredientScalingTypeEnum("scaling_type").notNull().default("LINEAR"),
 });
 
 // === RELATIONS ===

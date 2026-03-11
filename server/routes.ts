@@ -178,10 +178,16 @@ export async function registerRoutes(
     // Get all meal entries to calculate frequencies
     const allEntries = await storage.getMealEntriesRange("2000-01-01", "2100-01-01");
     const frequencyMap = new Map<number, number>();
+    const recipeDaysMap = new Map<number, Set<string>>();
     allEntries.forEach(entry => {
-      if (entry.recipeId) {
-        frequencyMap.set(entry.recipeId, (frequencyMap.get(entry.recipeId) || 0) + 1);
-      }
+      if (!entry.recipeId || !entry.date) return;
+      const recipeId = Number(entry.recipeId);
+      const days = recipeDaysMap.get(recipeId) || new Set<string>();
+      days.add(entry.date);
+      recipeDaysMap.set(recipeId, days);
+    });
+    recipeDaysMap.forEach((days, recipeId) => {
+      frequencyMap.set(recipeId, days.size);
     });
 
     const itemsWithStats = items.map(r => {
