@@ -295,6 +295,26 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateBatch: {
+      method: "PATCH" as const,
+      path: "/api/shared-meals/:id",
+      input: z.object({
+        totalServings: z.number().min(0.25).optional(),
+        note: z.string().nullable().optional(),
+      }),
+      responses: {
+        200: z.custom<any>(),
+        404: errorSchemas.notFound,
+        400: errorSchemas.validation,
+      },
+    },
+    logs: {
+      method: "GET" as const,
+      path: "/api/shared-meals/:id/logs",
+      responses: {
+        200: z.array(z.custom<any>()),
+      },
+    },
   },
   userSettings: {
     get: {

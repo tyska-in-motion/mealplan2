@@ -36,14 +36,17 @@ export async function ensureDbCompat() {
   await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS target_protein integer DEFAULT 150`);
   await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS target_carbs integer DEFAULT 200`);
   await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS target_fat integer DEFAULT 65`);
+  await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS shared_batches_manual_only boolean DEFAULT true`);
   await pool.query(`UPDATE user_settings SET target_calories = 2000 WHERE target_calories IS NULL`);
   await pool.query(`UPDATE user_settings SET target_protein = 150 WHERE target_protein IS NULL`);
   await pool.query(`UPDATE user_settings SET target_carbs = 200 WHERE target_carbs IS NULL`);
   await pool.query(`UPDATE user_settings SET target_fat = 65 WHERE target_fat IS NULL`);
+  await pool.query(`UPDATE user_settings SET shared_batches_manual_only = true WHERE shared_batches_manual_only IS NULL`);
   await pool.query(`ALTER TABLE user_settings ALTER COLUMN target_calories SET NOT NULL`);
   await pool.query(`ALTER TABLE user_settings ALTER COLUMN target_protein SET NOT NULL`);
   await pool.query(`ALTER TABLE user_settings ALTER COLUMN target_carbs SET NOT NULL`);
   await pool.query(`ALTER TABLE user_settings ALTER COLUMN target_fat SET NOT NULL`);
+  await pool.query(`ALTER TABLE user_settings ALTER COLUMN shared_batches_manual_only SET NOT NULL`);
 
   // Backward compatibility for environments that already query per-person settings.
   await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS person text DEFAULT 'A'`);
@@ -203,6 +206,14 @@ export async function ensureDbCompat() {
   )`);
 
   await pool.query(`ALTER TABLE meal_entries ADD COLUMN IF NOT EXISTS cooked_batch_id integer`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS shared_meal_batch_logs (
+    id serial PRIMARY KEY,
+    batch_id integer NOT NULL,
+    action text NOT NULL,
+    payload jsonb,
+    created_at timestamp DEFAULT now()
+  )`);
 
 
 }
