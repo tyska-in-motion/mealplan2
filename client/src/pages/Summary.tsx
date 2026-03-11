@@ -88,16 +88,20 @@ export default function Summary() {
     };
 
     const ingredientMap = new Map<number, { name: string; totalAmount: number; usedInDays: Set<string> }>();
-    const recipeMap = new Map<number, { name: string; count: number }>();
+    const recipeMap = new Map<number, { name: string; count: number; events: Set<string> }>();
 
     days.forEach((day) => {
-      const recipesCookedToday = new Set<number>();
-
       (day.entries || []).forEach((entry: any) => {
         if (entry.recipe?.id) {
-          recipesCookedToday.add(Number(entry.recipe.id));
-          const currentRecipe = recipeMap.get(entry.recipe.id) || { name: entry.recipe.name, count: 0 };
-          recipeMap.set(entry.recipe.id, currentRecipe);
+          const recipeId = Number(entry.recipe.id);
+          const currentRecipe = recipeMap.get(recipeId) || { name: entry.recipe.name, count: 0, events: new Set<string>() };
+          const batchId = Number(entry.cookedBatchId || 0);
+          if (batchId > 0) {
+            currentRecipe.events.add(`batch:${batchId}`);
+          } else {
+            currentRecipe.events.add(`day:${day.date}`);
+          }
+          recipeMap.set(recipeId, currentRecipe);
         }
 
         const ingredientsToUse = entry.ingredients?.length > 0 ? entry.ingredients : (entry.recipe?.ingredients || []);
@@ -114,13 +118,11 @@ export default function Summary() {
           ingredientMap.set(ri.ingredient.id, currentIngredient);
         });
       });
+    });
 
-      recipesCookedToday.forEach((recipeId) => {
-        const recipe = recipeMap.get(recipeId);
-        if (!recipe) return;
-        recipe.count += 1;
-        recipeMap.set(recipeId, recipe);
-      });
+    recipeMap.forEach((recipe, recipeId) => {
+      recipe.count = recipe.events.size;
+      recipeMap.set(recipeId, recipe);
     });
 
     const mostUsedIngredients = Array.from(ingredientMap.values())

@@ -333,6 +333,7 @@ export class DatabaseStorage implements IStorage {
             }
           }
         },
+        cookedBatch: true,
         ingredients: {
           with: {
             ingredient: true
@@ -361,6 +362,7 @@ export class DatabaseStorage implements IStorage {
             }
           }
         },
+        cookedBatch: true,
         ingredients: {
           with: {
             ingredient: true
@@ -373,7 +375,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMealEntry(entry: CreateMealEntryRequest): Promise<MealEntry> {
-    const [newEntry] = await db.insert(mealEntries).values(entry).returning();
+    let cookedBatchId = entry.cookedBatchId;
+
+    if (entry.recipeId && !cookedBatchId) {
+      const recipe = await this.getRecipe(Number(entry.recipeId));
+      const recipeServings = Number(recipe?.servings) || 1;
+
+      if (recipe && recipeServings > 1) {
+        const requestedServings = Number(entry.servings) || 1;
+        const activeBatches = await this.getSharedMealBatches();
+        const existingBatch = activeBatches.find((batch: any) => (
+          Number(batch.recipeId) === Number(entry.recipeId)
+          && Number(batch.remainingServings || 0) >= requestedServings
+        ));
+
+        if (existingBatch) {
+          cookedBatchId = Number(existingBatch.id);
+        } else {
+          const [autoBatch] = await db.insert(sharedMealBatches).values({
+            recipeId: Number(entry.recipeId),
+            totalServings: recipeServings,
+            note: "Auto",
+            isArchived: false,
+          }).returning();
+          cookedBatchId = autoBatch.id;
+        }
+      }
+    }
+
+    const [newEntry] = await db.insert(mealEntries).values({
+      ...entry,
+      cookedBatchId,
+    }).returning();
     
     // If it's a recipe, clone its ingredients to the entry for independent editing
     if (entry.recipeId) {
@@ -498,6 +531,7 @@ export class DatabaseStorage implements IStorage {
             }
           }
         },
+        cookedBatch: true,
         ingredients: {
           with: {
             ingredient: true
