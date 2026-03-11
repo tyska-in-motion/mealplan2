@@ -177,6 +177,23 @@ export default function MealPlan() {
     },
   });
 
+  const deleteBatch = useMutation({
+    mutationFn: async (id: number) => {
+      const path = api.sharedMeals.deleteBatch.path.replace(":id", String(id));
+      const res = await fetch(path, {
+        method: api.sharedMeals.deleteBatch.method,
+      });
+      if (!res.ok) throw new Error("Nie udało się usunąć partii");
+      return null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sharedMeals.list.path, "archived"] });
+      toast({ title: "Usunięto", description: "Partia została trwale usunięta." });
+    },
+    onError: (error: any) => toast({ title: "Błąd", description: error?.message || "Nie udało się usunąć partii", variant: "destructive" }),
+  });
+
   const updateBatch = useMutation({
     mutationFn: async ({ id, totalServings, note }: { id: number; totalServings: number; note: string }) => {
       const path = api.sharedMeals.updateBatch.path.replace(":id", String(id));
@@ -1050,7 +1067,26 @@ export default function MealPlan() {
                     <p className="font-semibold">{batch.recipe?.name}</p>
                     <p className="text-xs text-muted-foreground">Ugotowane: {Number(batch.totalServings) || 0} porcji</p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => archiveBatch.mutate({ id: batch.id, isArchived: false })}>Przywróć</Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => archiveBatch.mutate({ id: batch.id, isArchived: false })}>Przywróć</Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="sm">Usuń</Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Usunąć partię z archiwum?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Ta operacja jest nieodwracalna. Usunięta zostanie partia i powiązane wpisy w planie posiłków.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => deleteBatch.mutate(batch.id)}>Usuń na stałe</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1767,7 +1803,9 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
       .filter((pair) => pair.A && pair.B)
       .map((pair) => {
         const recipeServings = Number(pair.A?.recipe?.servings) || 1;
-        const totalServings = (Number(pair.A?.servings) || 1) + (Number(pair.B?.servings) || 1);
+        const allocatedServings = (Number(pair.A?.servings) || 1) + (Number(pair.B?.servings) || 1);
+        const cookedBatchServings = Number(pair.A?.cookedBatch?.totalServings || pair.B?.cookedBatch?.totalServings || 0);
+        const totalServings = cookedBatchServings > 0 ? cookedBatchServings : allocatedServings;
         const sourceIngredients = pair.A?.recipe?.ingredients || [];
 
         const scaledIngredients = sourceIngredients.map((ri: any) => {

@@ -518,6 +518,19 @@ export async function registerRoutes(
     res.json(logs);
   });
 
+  app.delete(api.sharedMeals.deleteBatch.path, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      await storage.deleteSharedMealBatch(id);
+      res.status(204).send();
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("not found")) {
+        return res.status(404).json({ message: "Nie znaleziono partii" });
+      }
+      throw err;
+    }
+  });
+
   app.patch("/api/meal-plan/entry/:id", async (req, res) => {
 
     try {

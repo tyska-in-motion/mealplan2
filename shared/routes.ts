@@ -308,6 +308,14 @@ export const api = {
         400: errorSchemas.validation,
       },
     },
+    deleteBatch: {
+      method: "DELETE" as const,
+      path: "/api/shared-meals/:id",
+      responses: {
+        204: z.null(),
+        404: errorSchemas.notFound,
+      },
+    },
     logs: {
       method: "GET" as const,
       path: "/api/shared-meals/:id/logs",
