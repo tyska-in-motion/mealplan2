@@ -61,6 +61,7 @@ export interface IStorage {
   createSharedMealBatch(input: CreateSharedMealBatchRequest): Promise<SharedMealBatch>;
   updateSharedMealBatch(id: number, updates: Partial<Pick<SharedMealBatch, "totalServings" | "note">>): Promise<SharedMealBatch>;
   archiveSharedMealBatch(id: number, isArchived: boolean): Promise<SharedMealBatch>;
+  deleteSharedMealBatch(id: number): Promise<void>;
 
   // Shopping List Checks
   getShoppingListChecks(periodStart: string, periodEnd: string): Promise<Record<number, boolean>>;
@@ -649,6 +650,15 @@ export class DatabaseStorage implements IStorage {
       payload: { isArchived },
     });
     return updated;
+  }
+
+  async deleteSharedMealBatch(id: number): Promise<void> {
+    const existing = await db.query.sharedMealBatches.findFirst({ where: eq(sharedMealBatches.id, id) });
+    if (!existing) throw new Error("Shared meal batch not found");
+
+    await db.delete(mealEntries).where(eq(mealEntries.cookedBatchId, id));
+    await db.delete(sharedMealBatchLogs).where(eq(sharedMealBatchLogs.batchId, id));
+    await db.delete(sharedMealBatches).where(eq(sharedMealBatches.id, id));
   }
 
   async getShoppingListChecks(periodStart: string, periodEnd: string): Promise<Record<number, boolean>> {
