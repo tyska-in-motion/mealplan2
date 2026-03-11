@@ -805,10 +805,12 @@ export default function MealPlan() {
             onUpdateEntry={(id: number, updates: any) => updateMealEntry({ id, updates })}
             onViewRecipe={(recipe: any) => setViewingRecipe(recipe)}
             onViewPlannedRecipe={(recipe: any, meal: any, options?: { shared?: boolean }) => {
+              const batchServings = Number(meal?.cookedBatch?.totalServings) || 0;
+              const servingsForView = batchServings > 0 ? batchServings : (Number(meal?.servings) || 1);
               setViewingRecipe(recipe);
-              setViewingMeal(meal);
-              setViewingServings(meal.servings);
-              setIsSharedRecipeView(!!options?.shared);
+              setViewingMeal({ ...meal, servings: servingsForView });
+              setViewingServings(servingsForView);
+              setIsSharedRecipeView(!!options?.shared || batchServings > 0);
             }}
           />
         ))}
