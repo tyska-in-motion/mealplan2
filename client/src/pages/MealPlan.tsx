@@ -888,6 +888,10 @@ export default function MealPlan() {
             onDeleteMeal={(params: any) => deleteEntry(params)}
             onToggleEaten={(params: any) => toggleEaten(params)}
             onUpdateEntry={(id: number, updates: any) => updateMealEntry({ id, updates })}
+            onMoveToNextDay={(entry: any) => {
+              const nextDate = format(addDays(new Date(`${entry.date}T00:00:00`), 1), "yyyy-MM-dd");
+              updateMealEntry({ id: entry.id, updates: { date: nextDate } });
+            }}
             onViewRecipe={(recipe: any) => setViewingRecipe(recipe)}
             onViewPlannedRecipe={(recipe: any, meal: any, options?: { shared?: boolean }) => {
               const batchServings = Number(meal?.cookedBatch?.totalServings) || 0;
@@ -1614,7 +1618,7 @@ export default function MealPlan() {
   );
 }
 
-function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngredient, onDeleteMeal, onToggleEaten, onUpdateEntry, onViewRecipe, onViewPlannedRecipe }: any) {
+function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngredient, onDeleteMeal, onToggleEaten, onUpdateEntry, onMoveToNextDay, onViewRecipe, onViewPlannedRecipe }: any) {
   const [servingInputs, setServingInputs] = useState<Record<number, string>>({});
   const [selectedEntries, setSelectedEntries] = useState<Record<number, boolean>>({});
   const dateStr = format(day, "yyyy-MM-dd");
@@ -2158,6 +2162,14 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
                             <div className="flex items-center">
                               <button onClick={() => onToggleEaten({ id: entry.id, isEaten: !entry.isEaten })} className={cn("p-1 rounded-md transition-colors", entry.isEaten ? "text-emerald-800 bg-emerald-200" : "text-muted-foreground hover:bg-muted")}>
                                 {entry.isEaten ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+                              </button>
+                              <button
+                                onClick={() => onMoveToNextDay(entry)}
+                                className="p-1 text-muted-foreground hover:text-emerald-700 transition-colors"
+                                title="Przenieś na następny dzień (ta sama osoba)"
+                                aria-label="Przenieś na następny dzień"
+                              >
+                                <ChevronRight className="w-4 h-4" />
                               </button>
 
                               <AlertDialog>

@@ -401,9 +401,13 @@ export class DatabaseStorage implements IStorage {
         if (existingBatch) {
           cookedBatchId = Number(existingBatch.id);
         } else {
+          const totalServingsToCook = requestedServings > 0
+            ? Math.min(requestedServings, recipeServings)
+            : recipeServings;
+
           const [autoBatch] = await db.insert(sharedMealBatches).values({
             recipeId: Number(entry.recipeId),
-            totalServings: recipeServings,
+            totalServings: totalServingsToCook,
             note: "Auto",
             isArchived: false,
           }).returning();
