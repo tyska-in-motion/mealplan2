@@ -8,8 +8,13 @@ import Dashboard from "@/pages/Dashboard";
 import Recipes from "@/pages/Recipes";
 import Ingredients from "@/pages/Ingredients";
 import MealPlan from "@/pages/MealPlan";
+import SharedMeals from "@/pages/SharedMeals";
 import ShoppingList from "@/pages/ShoppingList";
 import Summary from "@/pages/Summary";
+
+
+const MealPlanPage = () => <MealPlan />;
+const SharedMealsPage = () => <SharedMeals />;
 
 function Router() {
   return (
@@ -17,7 +22,8 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/recipes" component={Recipes} />
       <Route path="/ingredients" component={Ingredients} />
-      <Route path="/meal-plan" component={MealPlan} />
+      <Route path="/meal-plan" component={MealPlanPage} />
+      <Route path="/shared-meals" component={SharedMealsPage} />
       <Route path="/shopping-list" component={ShoppingList} />
       <Route path="/summary" component={Summary} />
       <Route component={NotFound} />
