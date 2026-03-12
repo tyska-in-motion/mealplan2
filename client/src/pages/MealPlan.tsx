@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { RecipeView } from "@/components/RecipeView";
 import { calculateScaledAmount } from "@shared/scaling";
 import { useToast } from "@/hooks/use-toast";
-import { Check, ChevronsUpDown, Soup } from "lucide-react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { api } from "@shared/routes";
@@ -32,8 +32,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-export default function MealPlan() {
+export default function MealPlan({ mode = "plan" }: { mode?: "plan" | "shared"; [key: string]: unknown } = {}) {
   const [location] = useLocation();
+  const isSharedView = mode === "shared";
   const [baseDate, setBaseDate] = useState(new Date());
 
   useEffect(() => {
@@ -55,6 +56,8 @@ export default function MealPlan() {
   }, [baseDate]);
 
   useEffect(() => {
+    if (isSharedView) return;
+
     const query = location.split("?")[1] || "";
     const hash = location.includes("#") ? location.split("#")[1] : "";
     const params = new URLSearchParams(query.split("#")[0] || "");
@@ -69,7 +72,7 @@ export default function MealPlan() {
 
     const timer = window.setTimeout(scrollToTarget, 120);
     return () => window.clearTimeout(timer);
-  }, [location, weekDays]);
+  }, [isSharedView, location, weekDays]);
 
   const { data: recipes } = useRecipes();
   const { mutate: addEntry } = useAddMealEntry();
@@ -90,7 +93,6 @@ export default function MealPlan() {
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeView, setActiveView] = useState<"plan" | "shared">("plan");
   const [sharedRecipeId, setSharedRecipeId] = useState<number>(0);
   const [sharedTotalServings, setSharedTotalServings] = useState<number>(6);
   const [sharedNote, setSharedNote] = useState("");
@@ -825,25 +827,23 @@ export default function MealPlan() {
   return (
     <Layout>
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-3xl font-bold">Plan Tygodniowy</h1>
-        <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white p-2 shadow-sm sm:w-auto sm:justify-start sm:gap-4">
-          <button onClick={() => setBaseDate(d => subDays(d, 7))} className="p-2 hover:bg-muted rounded-lg transition-colors">
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <span className="min-w-0 flex-1 text-center text-sm font-semibold tabular-nums sm:w-48 sm:flex-none sm:text-base">
-            {format(weekDays[0], "d MMM", { locale: pl })} - {format(weekDays[6], "d MMM, yyyy", { locale: pl })}
-          </span>
-          <button onClick={() => setBaseDate(d => addDays(d, 7))} className="p-2 hover:bg-muted rounded-lg transition-colors">
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-      <div className="mb-4 inline-flex rounded-xl border bg-white p-1 shadow-sm">
-        <Button variant={activeView === "plan" ? "default" : "ghost"} size="sm" onClick={() => setActiveView("plan")}>Plan tygodniowy</Button>
-        <Button variant={activeView === "shared" ? "default" : "ghost"} size="sm" onClick={() => setActiveView("shared")}><Soup className="mr-1 h-4 w-4" />Wspólne posiłki</Button>
+        <h1 className="text-3xl font-bold">{isSharedView ? "Wspólne posiłki" : "Plan Tygodniowy"}</h1>
+        {!isSharedView && (
+          <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white p-2 shadow-sm sm:w-auto sm:justify-start sm:gap-4">
+            <button onClick={() => setBaseDate(d => subDays(d, 7))} className="p-2 hover:bg-muted rounded-lg transition-colors">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <span className="min-w-0 flex-1 text-center text-sm font-semibold tabular-nums sm:w-48 sm:flex-none sm:text-base">
+              {format(weekDays[0], "d MMM", { locale: pl })} - {format(weekDays[6], "d MMM, yyyy", { locale: pl })}
+            </span>
+            <button onClick={() => setBaseDate(d => addDays(d, 7))} className="p-2 hover:bg-muted rounded-lg transition-colors">
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {activeView === "plan" && (
+      {!isSharedView && (
       <>
       <section className="mb-6 rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-end">
@@ -907,7 +907,7 @@ export default function MealPlan() {
       </>
       )}
 
-      {activeView === "shared" && (
+      {isSharedView && (
         <section className="space-y-4">
           <div className="rounded-2xl border border-border/60 bg-white p-4 shadow-sm">
             <label className="flex items-center gap-2 text-sm">

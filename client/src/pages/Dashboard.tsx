@@ -866,7 +866,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">Menu na {isToday ? "dziś" : format(date, "eeee", { locale: pl })}</h2>
           <div className="flex items-center gap-4">
-            <Link href={`/meal-plan?date=${dateStr}#shared-meals`}>
+            <Link href="/shared-meals">
               <span className="text-emerald-700 text-sm font-semibold hover:underline cursor-pointer">Wspólne posiłki</span>
             </Link>
             <Link href={`/meal-plan?date=${dateStr}`}>
