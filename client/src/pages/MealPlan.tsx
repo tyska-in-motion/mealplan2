@@ -536,13 +536,15 @@ export default function MealPlan({ mode = "plan" }: { mode?: "plan" | "shared"; 
 
         const mergedIngredients = (recipe.ingredients || []).map((ri: any) => ({
           ingredientId: ri.ingredientId,
-          amount: Number(ri.amount) || 0,
+          amount: Number(ri.baseAmount ?? ri.amount) || 0,
+          scalingType: ri.scalingType || "LINEAR",
         }));
 
         selectedAddons.forEach((addon: any) => {
           mergedIngredients.push({
             ingredientId: addon.ingredientId,
             amount: Number(addon.amount) || 0,
+            scalingType: "FIXED",
           });
         });
 
@@ -793,13 +795,19 @@ export default function MealPlan({ mode = "plan" }: { mode?: "plan" | "shared"; 
 
         const baseIngredients = (batch?.recipe?.ingredients || []).map((ri: any) => ({
           ingredientId: Number(ri.ingredientId),
-          amount: Number(ri.amount) || 0,
+          amount: Number(ri.baseAmount ?? ri.amount) || 0,
+          scalingType: ri.scalingType || "LINEAR",
+        }));
+
+        const addonIngredients = selectedAddons.map((addon: any) => ({
+          ...addon,
+          scalingType: "FIXED",
         }));
 
         updateMealEntry({
           id: entry.id,
           updates: {
-            ingredients: [...baseIngredients, ...selectedAddons],
+            ingredients: [...baseIngredients, ...addonIngredients],
             servings,
           },
         }, {
