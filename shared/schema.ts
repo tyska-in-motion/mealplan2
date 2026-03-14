@@ -246,6 +246,8 @@ export const shoppingListSnapshots = pgTable("shopping_list_snapshots", {
   name: text("name").notNull(),
   periodStart: date("period_start").notNull(),
   periodEnd: date("period_end").notNull(),
+  status: text("status").notNull().default("ACTIVE"),
+  completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

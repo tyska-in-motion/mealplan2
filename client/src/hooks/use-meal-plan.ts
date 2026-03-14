@@ -135,7 +135,7 @@ export function useCopyDayPlan() {
   });
 }
 
-export function useShoppingList(startDate: string, endDate: string) {
+export function useShoppingList(startDate: string, endDate: string, enabled = true) {
   return useQuery({
     queryKey: [api.mealPlan.getShoppingList.path, startDate, endDate],
     queryFn: async () => {
@@ -147,7 +147,7 @@ export function useShoppingList(startDate: string, endDate: string) {
       }
       return api.mealPlan.getShoppingList.responses[200].parse(await res.json());
     },
-    enabled: !!startDate && !!endDate,
+    enabled: enabled && !!startDate && !!endDate,
     placeholderData: (previousData) => previousData ?? [],
     retry: 1,
     staleTime: 0,
