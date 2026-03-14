@@ -90,6 +90,23 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+
+  private calculateSnapshotTotalCost(items: any[], ingredientPriceMap: Map<number, number>): number {
+    return items.reduce((acc, item) => {
+      if (item.status !== "BOUGHT") return acc;
+
+      const ingredientId = Number(item.ingredientId);
+      if (!Number.isFinite(ingredientId) || ingredientId <= 0) return acc;
+
+      const amountInGrams = Number(item.totalAmount || 0);
+      if (!Number.isFinite(amountInGrams) || amountInGrams <= 0) return acc;
+
+      const pricePer100g = Number(ingredientPriceMap.get(ingredientId) || 0);
+      if (!Number.isFinite(pricePer100g) || pricePer100g <= 0) return acc;
+
+      return acc + (amountInGrams / 100) * pricePer100g;
+    }, 0);
+  }
   async getUserSettings(): Promise<Record<"A" | "B", UserSettings>> {
     const allSettings = await db.select().from(userSettings);
 
@@ -869,9 +886,20 @@ export class DatabaseStorage implements IStorage {
       itemsBySnapshot.set(item.snapshotId, arr);
     }
 
+    const ingredientIds = Array.from(new Set(
+      items
+        .map((item) => Number(item.ingredientId))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    ));
+
+    const ingredientRows = ingredientIds.length > 0
+      ? await db.select({ id: ingredients.id, price: ingredients.price }).from(ingredients).where(inArray(ingredients.id, ingredientIds))
+      : [];
+    const ingredientPriceMap = new Map<number, number>(ingredientRows.map((row) => [row.id, Number(row.price || 0)]));
+
     return snapshots.map((snapshot) => {
       const snapshotItems = itemsBySnapshot.get(snapshot.id) || [];
-      const totalCost = snapshotItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+      const totalCost = this.calculateSnapshotTotalCost(snapshotItems, ingredientPriceMap);
       const stats = snapshotItems.reduce((acc, item) => {
         if (item.status === "BOUGHT") acc.bought += 1;
         if (item.status === "AT_HOME") acc.atHome += 1;
@@ -905,9 +933,20 @@ export class DatabaseStorage implements IStorage {
       itemsBySnapshot.set(item.snapshotId, arr);
     }
 
+    const ingredientIds = Array.from(new Set(
+      items
+        .map((item) => Number(item.ingredientId))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    ));
+
+    const ingredientRows = ingredientIds.length > 0
+      ? await db.select({ id: ingredients.id, price: ingredients.price }).from(ingredients).where(inArray(ingredients.id, ingredientIds))
+      : [];
+    const ingredientPriceMap = new Map<number, number>(ingredientRows.map((row) => [row.id, Number(row.price || 0)]));
+
     return snapshots.map((snapshot) => {
       const snapshotItems = itemsBySnapshot.get(snapshot.id) || [];
-      const totalCost = snapshotItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+      const totalCost = this.calculateSnapshotTotalCost(snapshotItems, ingredientPriceMap);
       const stats = snapshotItems.reduce((acc, item) => {
         if (item.status === "BOUGHT") acc.bought += 1;
         if (item.status === "AT_HOME") acc.atHome += 1;

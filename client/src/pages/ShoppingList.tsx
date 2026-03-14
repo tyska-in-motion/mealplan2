@@ -403,20 +403,7 @@ export default function ShoppingList() {
                               </p>
                             </div>
                           </div>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="h-8 w-24"
-                            defaultValue={Number(item.price || 0)}
-                            disabled={selectedSnapshot.status === "COMPLETED"}
-                            onBlur={(e) => {
-                              const price = Number(e.target.value);
-                              if (Number.isFinite(price) && price >= 0) {
-                                updateItemMutation.mutate({ id: item.id, data: { price } });
-                              }
-                            }}
-                          />
+
                         </div>
                       );
                     })}
@@ -449,20 +436,7 @@ export default function ShoppingList() {
                               </p>
                             </div>
                           </div>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="h-8 w-24"
-                            defaultValue={Number(item.price || 0)}
-                            disabled={selectedSnapshot.status === "COMPLETED"}
-                            onBlur={(e) => {
-                              const price = Number(e.target.value);
-                              if (Number.isFinite(price) && price >= 0) {
-                                updateItemMutation.mutate({ id: item.id, data: { price } });
-                              }
-                            }}
-                          />
+
                         </div>
                       );
                     })}
