@@ -76,7 +76,9 @@ export interface IStorage {
   setShoppingListExcludedItem(ingredientId: number, periodStart: string, periodEnd: string, excluded: boolean): Promise<void>;
   createShoppingListSnapshot(input: { name: string; periodStart: string; periodEnd: string; items: { ingredientId?: number | null; name: string; totalAmount: number; unit: string; category?: string | null; status: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; isExtra?: boolean; }[] }): Promise<any>;
   getShoppingListSnapshots(): Promise<any[]>;
+  getActiveShoppingListSnapshots(): Promise<any[]>;
   getShoppingListSnapshotById(snapshotId: number): Promise<any | undefined>;
+  completeShoppingListSnapshot(snapshotId: number): Promise<any | undefined>;
   updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; name?: string; totalAmount?: number; unit?: string; category?: string }): Promise<any>;
   addShoppingListSnapshotItem(snapshotId: number, input: { name: string; totalAmount: number; unit: string; category?: string; status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number }): Promise<any>;
   deleteShoppingListSnapshotItem(snapshotItemId: number): Promise<void>;
@@ -828,6 +830,8 @@ export class DatabaseStorage implements IStorage {
       name: input.name,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
+      status: "ACTIVE",
+      completedAt: null,
     }).returning();
 
     if (input.items.length > 0) {
@@ -850,7 +854,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getShoppingListSnapshots(): Promise<any[]> {
-    const snapshots = await db.select().from(shoppingListSnapshots).orderBy(desc(shoppingListSnapshots.createdAt));
+    const snapshots = await db.select().from(shoppingListSnapshots).where(eq(shoppingListSnapshots.status, "COMPLETED")).orderBy(desc(shoppingListSnapshots.completedAt), desc(shoppingListSnapshots.createdAt));
+    if (snapshots.length === 0) return [];
+
+    const items = await db.select().from(shoppingListSnapshotItems).where(
+      inArray(shoppingListSnapshotItems.snapshotId, snapshots.map((s) => s.id))
+    );
+
+    const itemsBySnapshot = new Map<number, any[]>();
+    for (const item of items) {
+      const arr = itemsBySnapshot.get(item.snapshotId) || [];
+      arr.push(item);
+      itemsBySnapshot.set(item.snapshotId, arr);
+    }
+
+    return snapshots.map((snapshot) => {
+      const snapshotItems = itemsBySnapshot.get(snapshot.id) || [];
+      const totalCost = snapshotItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+      const stats = snapshotItems.reduce((acc, item) => {
+        if (item.status === "BOUGHT") acc.bought += 1;
+        if (item.status === "AT_HOME") acc.atHome += 1;
+        if (item.status === "NOT_BOUGHT") acc.notBought += 1;
+        return acc;
+      }, { bought: 0, atHome: 0, notBought: 0 });
+
+      return {
+        ...snapshot,
+        itemCount: snapshotItems.length,
+        totalCost,
+        ...stats,
+      };
+    });
+  }
+
+
+
+  async getActiveShoppingListSnapshots(): Promise<any[]> {
+    const snapshots = await db.select().from(shoppingListSnapshots).where(eq(shoppingListSnapshots.status, "ACTIVE")).orderBy(desc(shoppingListSnapshots.createdAt));
     if (snapshots.length === 0) return [];
 
     const items = await db.select().from(shoppingListSnapshotItems).where(
@@ -889,6 +929,17 @@ export class DatabaseStorage implements IStorage {
 
     const items = await db.select().from(shoppingListSnapshotItems).where(eq(shoppingListSnapshotItems.snapshotId, snapshotId));
     return { ...snapshot, items };
+  }
+
+
+
+  async completeShoppingListSnapshot(snapshotId: number): Promise<any | undefined> {
+    const [updated] = await db.update(shoppingListSnapshots)
+      .set({ status: "COMPLETED", completedAt: new Date() })
+      .where(eq(shoppingListSnapshots.id, snapshotId))
+      .returning();
+
+    return updated;
   }
 
   async updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; name?: string; totalAmount?: number; unit?: string; category?: string }): Promise<any> {
