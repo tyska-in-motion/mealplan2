@@ -1719,6 +1719,14 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
       if (ingredientsToUse.length === 0) return addonTotals;
 
       const frequentAddonIds = new Set<number>(((entry?.recipe?.frequentAddons) || []).map((addon: any) => Number(addon.ingredientId)));
+      const frequentAddonsByIngredient = (entry?.recipe?.frequentAddons || []).reduce((acc: Map<number, any[]>, addon: any) => {
+        const id = Number(addon?.ingredientId);
+        if (!Number.isFinite(id)) return acc;
+        const current = acc.get(id) || [];
+        current.push(addon);
+        acc.set(id, current);
+        return acc;
+      }, new Map<number, any[]>());
       const recipeIngredientCounts = (entry?.recipe?.ingredients || []).reduce((acc: Map<number, number>, ingredient: any) => {
         const id = Number(ingredient?.ingredientId);
         if (!Number.isFinite(id)) return acc;
@@ -1738,7 +1746,12 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
         const isFrequentAddon = frequentAddonIds.has(ingredientId) && occurrence > recipeCount;
         if (!isFrequentAddon) return;
 
-        const effectiveAmount = getEffectiveIngredientAmount(ri, entry);
+        const addonOccurrence = occurrence - recipeCount;
+        const addonDefinition = (frequentAddonsByIngredient.get(ingredientId) || [])[addonOccurrence - 1];
+        const addonScalingType = addonDefinition?.scalingType || ri?.scalingType || "LINEAR";
+        const effectiveAmount = addonScalingType === "STEP"
+          ? Number(ri?.amount) || 0
+          : getEffectiveIngredientAmount(ri, entry);
         if (effectiveAmount <= 0) return;
 
         const current = addonTotals.get(ingredientId);
