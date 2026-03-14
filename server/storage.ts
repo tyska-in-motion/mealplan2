@@ -77,7 +77,9 @@ export interface IStorage {
   createShoppingListSnapshot(input: { name: string; periodStart: string; periodEnd: string; items: { ingredientId?: number | null; name: string; totalAmount: number; unit: string; category?: string | null; status: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; isExtra?: boolean; }[] }): Promise<any>;
   getShoppingListSnapshots(): Promise<any[]>;
   getShoppingListSnapshotById(snapshotId: number): Promise<any | undefined>;
-  updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number }): Promise<any>;
+  updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; name?: string; totalAmount?: number; unit?: string; category?: string }): Promise<any>;
+  addShoppingListSnapshotItem(snapshotId: number, input: { name: string; totalAmount: number; unit: string; category?: string; status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number }): Promise<any>;
+  deleteShoppingListSnapshotItem(snapshotItemId: number): Promise<void>;
 
   // User Settings
   getUserSettings(): Promise<Record<"A" | "B", UserSettings>>;
@@ -889,13 +891,37 @@ export class DatabaseStorage implements IStorage {
     return { ...snapshot, items };
   }
 
-  async updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number }): Promise<any> {
+  async updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; name?: string; totalAmount?: number; unit?: string; category?: string }): Promise<any> {
     const payload: any = {};
     if (input.status) payload.status = input.status;
     if (input.price !== undefined) payload.price = input.price;
+    if (input.name !== undefined) payload.name = input.name;
+    if (input.totalAmount !== undefined) payload.totalAmount = input.totalAmount;
+    if (input.unit !== undefined) payload.unit = input.unit;
+    if (input.category !== undefined) payload.category = input.category;
 
     const [updated] = await db.update(shoppingListSnapshotItems).set(payload).where(eq(shoppingListSnapshotItems.id, snapshotItemId)).returning();
     return updated;
+  }
+
+  async addShoppingListSnapshotItem(snapshotId: number, input: { name: string; totalAmount: number; unit: string; category?: string; status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number }): Promise<any> {
+    const [created] = await db.insert(shoppingListSnapshotItems).values({
+      snapshotId,
+      ingredientId: null,
+      name: input.name,
+      totalAmount: input.totalAmount,
+      unit: input.unit,
+      category: input.category || "Inne",
+      status: input.status || "NOT_BOUGHT",
+      price: Number(input.price || 0),
+      isExtra: true,
+    }).returning();
+
+    return created;
+  }
+
+  async deleteShoppingListSnapshotItem(snapshotItemId: number): Promise<void> {
+    await db.delete(shoppingListSnapshotItems).where(eq(shoppingListSnapshotItems.id, snapshotItemId));
   }
 }
 

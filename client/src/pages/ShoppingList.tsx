@@ -3,7 +3,7 @@ import { Layout } from "@/components/Layout";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { useShoppingList } from "@/hooks/use-meal-plan";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { Check, ShoppingCart, Calendar, Plus, X, Save } from "lucide-react";
+import { Check, ShoppingCart, Calendar, Plus, X, Save, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,17 @@ import { useToast } from "@/hooks/use-toast";
 
 
 const roundToSingleDecimal = (value: number) => Math.round(value * 10) / 10;
+
+type SnapshotStatus = "BOUGHT" | "AT_HOME" | "NOT_BOUGHT";
+
+type SnapshotItemUpdate = {
+  status?: SnapshotStatus;
+  price?: number;
+  name?: string;
+  totalAmount?: number;
+  unit?: string;
+  category?: string;
+};
 
 const formatAmount = (value: number) => {
   const rounded = roundToSingleDecimal(value);
@@ -34,6 +45,9 @@ export default function ShoppingList() {
   const [extraUnit, setExtraUnit] = useState("szt");
   const [snapshotName, setSnapshotName] = useState("");
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null);
+  const [newSnapshotItemName, setNewSnapshotItemName] = useState("");
+  const [newSnapshotItemAmount, setNewSnapshotItemAmount] = useState("1");
+  const [newSnapshotItemUnit, setNewSnapshotItemUnit] = useState("szt");
 
   const startStr = format(range.start, "yyyy-MM-dd");
   const endStr = format(range.end, "yyyy-MM-dd");
@@ -214,13 +228,40 @@ export default function ShoppingList() {
   });
 
   const updateSnapshotItemMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: { status?: string; price?: number } }) => {
+    mutationFn: async ({ id, data }: { id: number; data: SnapshotItemUpdate }) => {
       await apiRequest("PATCH", `/api/shopping-lists/snapshot-items/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots", selectedSnapshotId] });
     }
+  });
+
+  const addSnapshotItemMutation = useMutation({
+    mutationFn: async ({ snapshotId, payload }: { snapshotId: number; payload: { name: string; totalAmount: number; unit: string } }) => {
+      await apiRequest("POST", `/api/shopping-lists/snapshots/${snapshotId}/items`, payload);
+    },
+    onSuccess: () => {
+      setNewSnapshotItemName("");
+      setNewSnapshotItemAmount("1");
+      setNewSnapshotItemUnit("szt");
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots", selectedSnapshotId] });
+      toast({
+        title: "Dodano produkt",
+        description: "Pozycja została dodana do zapisanej listy.",
+      });
+    },
+  });
+
+  const deleteSnapshotItemMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/shopping-lists/snapshot-items/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots", selectedSnapshotId] });
+    },
   });
 
   const excludedSet = useMemo(() => new Set(excludedItems), [excludedItems]);
@@ -310,6 +351,23 @@ export default function ShoppingList() {
     if (status === "BOUGHT") return "Kupione";
     if (status === "AT_HOME") return "W domu";
     return "Niekupione";
+  };
+
+  const handleAddSnapshotItem = () => {
+    if (!selectedSnapshotId) return;
+
+    const trimmedName = newSnapshotItemName.trim();
+    if (!trimmedName) return;
+
+    const parsedAmount = Number(newSnapshotItemAmount);
+    addSnapshotItemMutation.mutate({
+      snapshotId: selectedSnapshotId,
+      payload: {
+        name: trimmedName,
+        totalAmount: Number.isFinite(parsedAmount) && parsedAmount >= 0 ? parsedAmount : 0,
+        unit: newSnapshotItemUnit.trim() || "szt",
+      },
+    });
   };
 
   const handleExportPdf = () => {
@@ -627,16 +685,77 @@ export default function ShoppingList() {
 
       {selectedSnapshot && (
         <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
-          <div className="p-5 border-b border-border/50">
-            <h3 className="font-semibold">{selectedSnapshot.name}</h3>
-            <p className="text-xs text-muted-foreground">Kliknij status, aby przełączać: Niekupione → Kupione → W domu.</p>
+          <div className="p-5 border-b border-border/50 space-y-3">
+            <div>
+              <h3 className="font-semibold">{selectedSnapshot.name}</h3>
+              <p className="text-xs text-muted-foreground">Kliknij status, aby przełączać: Niekupione → Kupione → W domu.</p>
+            </div>
+            <div className="flex flex-col md:flex-row gap-2">
+              <Input
+                value={newSnapshotItemName}
+                onChange={(e) => setNewSnapshotItemName(e.target.value)}
+                placeholder="Dodaj produkt do zapisanej listy"
+              />
+              <Input
+                type="number"
+                min="0"
+                step="0.1"
+                className="md:w-28"
+                value={newSnapshotItemAmount}
+                onChange={(e) => setNewSnapshotItemAmount(e.target.value)}
+              />
+              <Input
+                className="md:w-28"
+                value={newSnapshotItemUnit}
+                onChange={(e) => setNewSnapshotItemUnit(e.target.value)}
+              />
+              <Button type="button" onClick={handleAddSnapshotItem} disabled={addSnapshotItemMutation.isPending}>
+                <Plus className="w-4 h-4 mr-2" />Dodaj
+              </Button>
+            </div>
           </div>
           <div className="divide-y divide-border/50">
             {(selectedSnapshot.items || []).map((item: any) => (
               <div key={item.id} className="p-3 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatAmount(Number(item.totalAmount || 0))} {item.unit}</p>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      className="h-8"
+                      defaultValue={item.name}
+                      onBlur={(e) => {
+                        const name = e.target.value.trim();
+                        if (name && name !== item.name) {
+                          updateSnapshotItemMutation.mutate({ id: item.id, data: { name } });
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      defaultValue={Number(item.totalAmount || 0)}
+                      className="h-8 w-24"
+                      onBlur={(e) => {
+                        const totalAmount = Number(e.target.value);
+                        if (Number.isFinite(totalAmount) && totalAmount >= 0 && totalAmount !== Number(item.totalAmount || 0)) {
+                          updateSnapshotItemMutation.mutate({ id: item.id, data: { totalAmount } });
+                        }
+                      }}
+                    />
+                    <Input
+                      className="h-8 w-24"
+                      defaultValue={item.unit}
+                      onBlur={(e) => {
+                        const unit = e.target.value.trim();
+                        if (unit && unit !== item.unit) {
+                          updateSnapshotItemMutation.mutate({ id: item.id, data: { unit } });
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button type="button" variant="outline" className="h-8 text-xs" onClick={() => updateSnapshotItemMutation.mutate({ id: item.id, data: { status: nextStatus(item.status) } })}>
@@ -655,6 +774,15 @@ export default function ShoppingList() {
                       }
                     }}
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 px-2"
+                    onClick={() => deleteSnapshotItemMutation.mutate(item.id)}
+                    disabled={deleteSnapshotItemMutation.isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
             ))}

@@ -842,9 +842,13 @@ export async function registerRoutes(
     const input = z.object({
       status: z.enum(["BOUGHT", "AT_HOME", "NOT_BOUGHT"]).optional(),
       price: z.number().nonnegative().optional(),
+      name: z.string().min(1).optional(),
+      totalAmount: z.number().nonnegative().optional(),
+      unit: z.string().min(1).optional(),
+      category: z.string().min(1).optional(),
     }).safeParse(req.body);
 
-    if (!input.success || (input.data.status === undefined && input.data.price === undefined)) {
+    if (!input.success || Object.values(input.data).every((value) => value === undefined)) {
       return res.status(400).json({ message: "Niepoprawne dane" });
     }
 
@@ -854,6 +858,44 @@ export async function registerRoutes(
     }
 
     res.json(updated);
+  });
+
+  app.post("/api/shopping-lists/snapshots/:id/items", async (req, res) => {
+    const snapshotId = Number(req.params.id);
+    if (!Number.isFinite(snapshotId) || snapshotId <= 0) {
+      return res.status(400).json({ message: "Niepoprawny identyfikator listy" });
+    }
+
+    const input = z.object({
+      name: z.string().min(1),
+      totalAmount: z.number().nonnegative(),
+      unit: z.string().min(1),
+      category: z.string().min(1).optional(),
+      status: z.enum(["BOUGHT", "AT_HOME", "NOT_BOUGHT"]).optional(),
+      price: z.number().nonnegative().optional(),
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ message: "Niepoprawne dane" });
+    }
+
+    const snapshot = await storage.getShoppingListSnapshotById(snapshotId);
+    if (!snapshot) {
+      return res.status(404).json({ message: "Lista nie istnieje" });
+    }
+
+    const created = await storage.addShoppingListSnapshotItem(snapshotId, input.data);
+    res.status(201).json(created);
+  });
+
+  app.delete("/api/shopping-lists/snapshot-items/:id", async (req, res) => {
+    const snapshotItemId = Number(req.params.id);
+    if (!Number.isFinite(snapshotItemId) || snapshotItemId <= 0) {
+      return res.status(400).json({ message: "Niepoprawny identyfikator pozycji" });
+    }
+
+    await storage.deleteShoppingListSnapshotItem(snapshotItemId);
+    res.status(204).end();
   });
 
   // User Settings
