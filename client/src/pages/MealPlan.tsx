@@ -1719,6 +1719,14 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
       if (ingredientsToUse.length === 0) return addonTotals;
 
       const frequentAddonIds = new Set<number>(((entry?.recipe?.frequentAddons) || []).map((addon: any) => Number(addon.ingredientId)));
+      const frequentAddonsByIngredient = (entry?.recipe?.frequentAddons || []).reduce((acc: Map<number, any[]>, addon: any) => {
+        const id = Number(addon?.ingredientId);
+        if (!Number.isFinite(id)) return acc;
+        const current = acc.get(id) || [];
+        current.push(addon);
+        acc.set(id, current);
+        return acc;
+      }, new Map<number, any[]>());
       const recipeIngredientCounts = (entry?.recipe?.ingredients || []).reduce((acc: Map<number, number>, ingredient: any) => {
         const id = Number(ingredient?.ingredientId);
         if (!Number.isFinite(id)) return acc;
@@ -1738,7 +1746,12 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
         const isFrequentAddon = frequentAddonIds.has(ingredientId) && occurrence > recipeCount;
         if (!isFrequentAddon) return;
 
-        const effectiveAmount = getEffectiveIngredientAmount(ri, entry);
+        const addonOccurrence = occurrence - recipeCount;
+        const addonDefinition = (frequentAddonsByIngredient.get(ingredientId) || [])[addonOccurrence - 1];
+        const addonScalingType = addonDefinition?.scalingType || ri?.scalingType || "LINEAR";
+        const effectiveAmount = addonScalingType === "STEP"
+          ? Number(ri?.amount) || 0
+          : getEffectiveIngredientAmount(ri, entry);
         if (effectiveAmount <= 0) return;
 
         const current = addonTotals.get(ingredientId);
@@ -1751,7 +1764,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
       return addonTotals;
     };
 
-    const collectFixedRecipeIngredientAmounts = (entry: any) => {
+    const collectRecipeIngredientAmountsByScaling = (entry: any, scalingType: "FIXED" | "STEP") => {
       const totals = new Map<number, { amount: number; ingredient: any }>();
       const ingredientsToUse = entry?.ingredients?.length > 0 ? entry.ingredients : [];
       if (ingredientsToUse.length === 0) return totals;
@@ -1776,7 +1789,7 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
 
         const sourceIngredients = (entry?.recipe?.ingredients || []).filter((source: any) => Number(source?.ingredientId) === ingredientId);
         const source = sourceIngredients[occurrence - 1] || sourceIngredients[0];
-        if ((source?.scalingType || "LINEAR") !== "FIXED") return;
+        if ((source?.scalingType || "LINEAR") !== scalingType) return;
 
         const effectiveAmount = getEffectiveIngredientAmount(ri, entry);
         if (effectiveAmount <= 0) return;
@@ -1829,27 +1842,37 @@ function DaySection({ day, sectionId, recipes, onAddMeal, onAddCustom, onAddIngr
           };
         });
 
-        if (Math.abs(recipeServings - 1) < 0.000001) {
-          const fixedTotals = collectFixedRecipeIngredientAmounts(pair.A);
-          collectFixedRecipeIngredientAmounts(pair.B).forEach((fixed, ingredientId) => {
-            const existing = fixedTotals.get(ingredientId);
-            fixedTotals.set(ingredientId, {
-              amount: (existing?.amount || 0) + fixed.amount,
-              ingredient: existing?.ingredient || fixed.ingredient || null,
+        const sumRecipeIngredientTotals = (scalingType: "FIXED" | "STEP") => {
+          const totals = collectRecipeIngredientAmountsByScaling(pair.A, scalingType);
+          collectRecipeIngredientAmountsByScaling(pair.B, scalingType).forEach((ingredient, ingredientId) => {
+            const existing = totals.get(ingredientId);
+            totals.set(ingredientId, {
+              amount: (existing?.amount || 0) + ingredient.amount,
+              ingredient: existing?.ingredient || ingredient.ingredient || null,
             });
           });
+          return totals;
+        };
 
-          scaledIngredients.forEach((ri: any) => {
-            if ((ri?.scalingType || "LINEAR") !== "FIXED") return;
-            const fixed = fixedTotals.get(Number(ri.ingredientId));
-            if (!fixed) return;
-            ri.amount = fixed.amount;
-            ri.calculatedAmount = fixed.amount;
-            if (!ri.ingredient && fixed.ingredient) {
-              ri.ingredient = fixed.ingredient;
-            }
-          });
-        }
+        const fixedTotals = sumRecipeIngredientTotals("FIXED");
+        const stepTotals = sumRecipeIngredientTotals("STEP");
+
+        scaledIngredients.forEach((ri: any) => {
+          const ingredientId = Number(ri?.ingredientId);
+          if (!Number.isFinite(ingredientId)) return;
+          const scalingType = ri?.scalingType || "LINEAR";
+          const recipeTotal = scalingType === "FIXED"
+            ? fixedTotals.get(ingredientId)
+            : scalingType === "STEP"
+              ? stepTotals.get(ingredientId)
+              : undefined;
+          if (!recipeTotal) return;
+          ri.amount = recipeTotal.amount;
+          ri.calculatedAmount = recipeTotal.amount;
+          if (!ri.ingredient && recipeTotal.ingredient) {
+            ri.ingredient = recipeTotal.ingredient;
+          }
+        });
 
         const addonsA = collectFrequentAddonAmounts(pair.A);
         const addonsB = collectFrequentAddonAmounts(pair.B);
