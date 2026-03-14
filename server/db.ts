@@ -196,6 +196,59 @@ export async function ensureDbCompat() {
   await pool.query(`DELETE FROM shopping_list_excluded_items a USING shopping_list_excluded_items b WHERE a.ctid < b.ctid AND a.ingredient_id = b.ingredient_id AND a.period_start = b.period_start AND a.period_end = b.period_end`);
   await pool.query(`ALTER TABLE shopping_list_excluded_items DROP CONSTRAINT IF EXISTS shopping_list_excluded_items_pkey`);
   await pool.query(`ALTER TABLE shopping_list_excluded_items ADD CONSTRAINT shopping_list_excluded_items_pkey PRIMARY KEY (ingredient_id, period_start, period_end)`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS shopping_list_snapshots (
+    id serial PRIMARY KEY,
+    name text NOT NULL,
+    period_start date NOT NULL,
+    period_end date NOT NULL,
+    created_at timestamp DEFAULT now()
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS shopping_list_snapshot_items (
+    id serial PRIMARY KEY,
+    snapshot_id integer NOT NULL REFERENCES shopping_list_snapshots(id) ON DELETE CASCADE,
+    ingredient_id integer,
+    name text NOT NULL,
+    total_amount real NOT NULL DEFAULT 0,
+    unit text NOT NULL DEFAULT 'g',
+    category text NOT NULL DEFAULT 'Inne',
+    status text NOT NULL DEFAULT 'NOT_BOUGHT',
+    price real NOT NULL DEFAULT 0,
+    is_extra boolean NOT NULL DEFAULT false
+  )`);
+
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ADD COLUMN IF NOT EXISTS ingredient_id integer`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ADD COLUMN IF NOT EXISTS total_amount real DEFAULT 0`);
+  await pool.query(`UPDATE shopping_list_snapshot_items SET total_amount = 0 WHERE total_amount IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN total_amount SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN total_amount SET DEFAULT 0`);
+
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ADD COLUMN IF NOT EXISTS unit text DEFAULT 'g'`);
+  await pool.query(`UPDATE shopping_list_snapshot_items SET unit = 'g' WHERE unit IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN unit SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN unit SET DEFAULT 'g'`);
+
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ADD COLUMN IF NOT EXISTS category text DEFAULT 'Inne'`);
+  await pool.query(`UPDATE shopping_list_snapshot_items SET category = 'Inne' WHERE category IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN category SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN category SET DEFAULT 'Inne'`);
+
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ADD COLUMN IF NOT EXISTS status text DEFAULT 'NOT_BOUGHT'`);
+  await pool.query(`UPDATE shopping_list_snapshot_items SET status = 'NOT_BOUGHT' WHERE status IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN status SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN status SET DEFAULT 'NOT_BOUGHT'`);
+
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ADD COLUMN IF NOT EXISTS price real DEFAULT 0`);
+  await pool.query(`UPDATE shopping_list_snapshot_items SET price = 0 WHERE price IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN price SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN price SET DEFAULT 0`);
+
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ADD COLUMN IF NOT EXISTS is_extra boolean DEFAULT false`);
+  await pool.query(`UPDATE shopping_list_snapshot_items SET is_extra = false WHERE is_extra IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN is_extra SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshot_items ALTER COLUMN is_extra SET DEFAULT false`);
+
   await pool.query(`CREATE TABLE IF NOT EXISTS shared_meal_batches (
     id serial PRIMARY KEY,
     recipe_id integer NOT NULL,
