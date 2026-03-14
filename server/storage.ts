@@ -12,6 +12,8 @@ import {
   shoppingListChecks,
   shoppingListExtras,
   shoppingListExcludedItems,
+  shoppingListSnapshots,
+  shoppingListSnapshotItems,
   mealEntryIngredients,
   type Ingredient,
   type Recipe,
@@ -28,7 +30,7 @@ import {
   type UserSettings,
   type InstructionStep,
 } from "@shared/schema";
-import { eq, sql, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, sql, and, gte, lte, inArray, desc } from "drizzle-orm";
 
 export interface IStorage {
   // Ingredients
@@ -72,6 +74,10 @@ export interface IStorage {
   toggleShoppingListExtraCheck(id: number, isChecked: boolean): Promise<void>;
   getShoppingListExcludedItems(periodStart: string, periodEnd: string): Promise<number[]>;
   setShoppingListExcludedItem(ingredientId: number, periodStart: string, periodEnd: string, excluded: boolean): Promise<void>;
+  createShoppingListSnapshot(input: { name: string; periodStart: string; periodEnd: string; items: { ingredientId?: number | null; name: string; totalAmount: number; unit: string; category?: string | null; status: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; isExtra?: boolean; }[] }): Promise<any>;
+  getShoppingListSnapshots(): Promise<any[]>;
+  getShoppingListSnapshotById(snapshotId: number): Promise<any | undefined>;
+  updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number }): Promise<any>;
 
   // User Settings
   getUserSettings(): Promise<Record<"A" | "B", UserSettings>>;
@@ -813,6 +819,83 @@ export class DatabaseStorage implements IStorage {
         gte(shoppingListExcludedItems.periodEnd, periodEnd),
       )
     );
+  }
+
+  async createShoppingListSnapshot(input: { name: string; periodStart: string; periodEnd: string; items: { ingredientId?: number | null; name: string; totalAmount: number; unit: string; category?: string | null; status: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; isExtra?: boolean }[] }): Promise<any> {
+    const [snapshot] = await db.insert(shoppingListSnapshots).values({
+      name: input.name,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+    }).returning();
+
+    if (input.items.length > 0) {
+      await db.insert(shoppingListSnapshotItems).values(
+        input.items.map((item) => ({
+          snapshotId: snapshot.id,
+          ingredientId: item.ingredientId ?? null,
+          name: item.name,
+          totalAmount: Number(item.totalAmount || 0),
+          unit: item.unit || "g",
+          category: item.category || "Inne",
+          status: item.status,
+          price: Number(item.price || 0),
+          isExtra: !!item.isExtra,
+        }))
+      );
+    }
+
+    return snapshot;
+  }
+
+  async getShoppingListSnapshots(): Promise<any[]> {
+    const snapshots = await db.select().from(shoppingListSnapshots).orderBy(desc(shoppingListSnapshots.createdAt));
+    if (snapshots.length === 0) return [];
+
+    const items = await db.select().from(shoppingListSnapshotItems).where(
+      inArray(shoppingListSnapshotItems.snapshotId, snapshots.map((s) => s.id))
+    );
+
+    const itemsBySnapshot = new Map<number, any[]>();
+    for (const item of items) {
+      const arr = itemsBySnapshot.get(item.snapshotId) || [];
+      arr.push(item);
+      itemsBySnapshot.set(item.snapshotId, arr);
+    }
+
+    return snapshots.map((snapshot) => {
+      const snapshotItems = itemsBySnapshot.get(snapshot.id) || [];
+      const totalCost = snapshotItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+      const stats = snapshotItems.reduce((acc, item) => {
+        if (item.status === "BOUGHT") acc.bought += 1;
+        if (item.status === "AT_HOME") acc.atHome += 1;
+        if (item.status === "NOT_BOUGHT") acc.notBought += 1;
+        return acc;
+      }, { bought: 0, atHome: 0, notBought: 0 });
+
+      return {
+        ...snapshot,
+        itemCount: snapshotItems.length,
+        totalCost,
+        ...stats,
+      };
+    });
+  }
+
+  async getShoppingListSnapshotById(snapshotId: number): Promise<any | undefined> {
+    const [snapshot] = await db.select().from(shoppingListSnapshots).where(eq(shoppingListSnapshots.id, snapshotId));
+    if (!snapshot) return undefined;
+
+    const items = await db.select().from(shoppingListSnapshotItems).where(eq(shoppingListSnapshotItems.snapshotId, snapshotId));
+    return { ...snapshot, items };
+  }
+
+  async updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number }): Promise<any> {
+    const payload: any = {};
+    if (input.status) payload.status = input.status;
+    if (input.price !== undefined) payload.price = input.price;
+
+    const [updated] = await db.update(shoppingListSnapshotItems).set(payload).where(eq(shoppingListSnapshotItems.id, snapshotItemId)).returning();
+    return updated;
   }
 }
 

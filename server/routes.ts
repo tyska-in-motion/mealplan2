@@ -789,6 +789,73 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  app.post("/api/shopping-lists/snapshots", async (req, res) => {
+    const input = z.object({
+      name: z.string().min(1),
+      periodStart: z.string().min(1),
+      periodEnd: z.string().min(1),
+      items: z.array(z.object({
+        ingredientId: z.number().nullable().optional(),
+        name: z.string().min(1),
+        totalAmount: z.number().nonnegative(),
+        unit: z.string().min(1),
+        category: z.string().nullable().optional(),
+        status: z.enum(["BOUGHT", "AT_HOME", "NOT_BOUGHT"]),
+        price: z.number().nonnegative().optional(),
+        isExtra: z.boolean().optional(),
+      })),
+    }).safeParse(req.body);
+
+    if (!input.success) {
+      return res.status(400).json({ message: "Niepoprawne dane" });
+    }
+
+    const snapshot = await storage.createShoppingListSnapshot(input.data);
+    res.status(201).json(snapshot);
+  });
+
+  app.get("/api/shopping-lists/snapshots", async (_req, res) => {
+    const snapshots = await storage.getShoppingListSnapshots();
+    res.json(snapshots);
+  });
+
+  app.get("/api/shopping-lists/snapshots/:id", async (req, res) => {
+    const snapshotId = Number(req.params.id);
+    if (!Number.isFinite(snapshotId) || snapshotId <= 0) {
+      return res.status(400).json({ message: "Niepoprawny identyfikator listy" });
+    }
+
+    const snapshot = await storage.getShoppingListSnapshotById(snapshotId);
+    if (!snapshot) {
+      return res.status(404).json({ message: "Lista nie istnieje" });
+    }
+
+    res.json(snapshot);
+  });
+
+  app.patch("/api/shopping-lists/snapshot-items/:id", async (req, res) => {
+    const snapshotItemId = Number(req.params.id);
+    if (!Number.isFinite(snapshotItemId) || snapshotItemId <= 0) {
+      return res.status(400).json({ message: "Niepoprawny identyfikator pozycji" });
+    }
+
+    const input = z.object({
+      status: z.enum(["BOUGHT", "AT_HOME", "NOT_BOUGHT"]).optional(),
+      price: z.number().nonnegative().optional(),
+    }).safeParse(req.body);
+
+    if (!input.success || (input.data.status === undefined && input.data.price === undefined)) {
+      return res.status(400).json({ message: "Niepoprawne dane" });
+    }
+
+    const updated = await storage.updateShoppingListSnapshotItem(snapshotItemId, input.data);
+    if (!updated) {
+      return res.status(404).json({ message: "Pozycja nie istnieje" });
+    }
+
+    res.json(updated);
+  });
+
   // User Settings
   app.get("/api/user-settings", async (req, res) => {
     const settings = await storage.getUserSettings();
