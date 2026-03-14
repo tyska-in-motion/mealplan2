@@ -77,6 +77,18 @@ export default function Dashboard() {
   ), [viewingRecipe?.frequentAddons]);
   const frequentAddonDefinitions = viewingRecipe?.frequentAddons || [];
   const getAddonBaseAmount = (addon: any) => Number(addon?.baseAmount ?? addon?.amount) || 0;
+  const getAddonIncrementAmount = (addon: any) => {
+    const entryServings = Number(viewingMeal?.servings) || 1;
+    const recipeServings = Number(viewingRecipe?.servings) || 1;
+    const amount = calculateScaledAmount({
+      baseAmount: getAddonBaseAmount(addon),
+      scalingType: addon?.scalingType || "LINEAR",
+      scalingFormula: addon?.scalingFormula,
+      stepThresholds: addon?.stepThresholds,
+    }, entryServings, recipeServings);
+
+    return Number.isFinite(amount) ? amount : getAddonBaseAmount(addon);
+  };
 
   const availableIngredientIds = useMemo(() => {
     const alwaysAtHomeIds = (allAvailableIngredients || [])
@@ -167,7 +179,7 @@ export default function Dashboard() {
         amount: Math.round(calculateScaledAmount(ingredientForScaling as any, entryServings, recipeServings)),
         ingredient: ri.ingredient,
         isFrequentAddon,
-        scalingType: "FIXED",
+        scalingType: ingredientForScaling.scalingType,
         scalingFormula: ingredientForScaling.scalingFormula,
         stepThresholds: ingredientForScaling.stepThresholds,
       };
@@ -186,7 +198,7 @@ export default function Dashboard() {
 
   const addFrequentAddonToEdit = (addon: any) => {
     const addonIngredientId = Number(addon.ingredientId);
-    const addonStep = getAddonBaseAmount(addon);
+    const addonStep = getAddonIncrementAmount(addon);
     if (!addonIngredientId || addonStep <= 0) return;
 
     setEditingMealIngredients((prev) => {
@@ -194,7 +206,14 @@ export default function Dashboard() {
       if (existingIndex >= 0) {
         return prev.map((item: any, idx: number) =>
           idx === existingIndex
-            ? { ...item, amount: Number(item.amount || 0) + addonStep, isFrequentAddon: true }
+            ? {
+                ...item,
+                amount: Number(item.amount || 0) + addonStep,
+                isFrequentAddon: true,
+                scalingType: addon?.scalingType || item.scalingType || "LINEAR",
+                scalingFormula: addon?.scalingFormula ?? item.scalingFormula,
+                stepThresholds: addon?.stepThresholds ?? item.stepThresholds,
+              }
             : item
         );
       }
@@ -204,6 +223,9 @@ export default function Dashboard() {
         amount: addonStep,
         ingredient: addon.ingredient || null,
         isFrequentAddon: true,
+        scalingType: addon?.scalingType || "LINEAR",
+        scalingFormula: addon?.scalingFormula,
+        stepThresholds: addon?.stepThresholds,
       }];
     });
   };
@@ -252,7 +274,7 @@ export default function Dashboard() {
       .map(i => ({ 
         ingredientId: Number(i.ingredientId), 
         amount: convertDisplayedAmountToStoredAmount(i, entryServings, recipeServings),
-        scalingType: "FIXED",
+        scalingType: i.scalingType || "FIXED",
       }));
 
     if (ingredientsData.length === 0) {
@@ -1057,7 +1079,7 @@ export default function Dashboard() {
                         className={cn("h-8", isAlreadyAdded && "border-emerald-300 bg-emerald-100 text-emerald-900")}
                         onClick={() => addFrequentAddonToEdit(addon)}
                       >
-                        + {Math.round(getAddonBaseAmount(addon))}g {addon.ingredient?.name || "Składnik"}
+                        + {Math.round(getAddonIncrementAmount(addon))}g {addon.ingredient?.name || "Składnik"}
                       </Button>
                     );
                   })}
