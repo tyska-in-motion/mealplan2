@@ -1,87 +1,70 @@
 import { useMemo, useState } from "react";
-import { Layout } from "@/components/Layout";
 import { format, startOfWeek, endOfWeek } from "date-fns";
-import { useShoppingList } from "@/hooks/use-meal-plan";
-import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { Check, ShoppingCart, Calendar, Plus, X, Save, Pencil, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
 import { pl } from "date-fns/locale";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Layout } from "@/components/Layout";
+import { useShoppingList } from "@/hooks/use-meal-plan";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { apiRequest, fetchWithTimeout, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
+type ItemStatus = "NOT_BOUGHT" | "AT_HOME" | "BOUGHT";
 
-const roundToSingleDecimal = (value: number) => Math.round(value * 10) / 10;
+const statusOrder: ItemStatus[] = ["NOT_BOUGHT", "AT_HOME", "BOUGHT"];
 
-type SnapshotStatus = "BOUGHT" | "AT_HOME" | "NOT_BOUGHT";
+const statusLabel = (status: ItemStatus) => {
+  if (status === "AT_HOME") return "Mam w domu";
+  if (status === "BOUGHT") return "Kupione";
+  return "Do kupienia";
+};
 
-type SnapshotItemUpdate = {
-  status?: SnapshotStatus;
-  price?: number;
-  name?: string;
-  totalAmount?: number;
-  unit?: string;
-  category?: string;
+const nextStatus = (status: ItemStatus): ItemStatus => {
+  const idx = statusOrder.indexOf(status);
+  return statusOrder[(idx + 1) % statusOrder.length];
 };
 
 const formatAmount = (value: number) => {
-  const rounded = roundToSingleDecimal(value);
-  if (Number.isInteger(rounded)) {
-    return String(rounded);
-  }
-  return rounded.toFixed(1);
+  const rounded = Math.round(Number(value || 0) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 };
 
 export default function ShoppingList() {
   const [range, setRange] = useState({
-    start: startOfWeek(new Date(), { weekStartsOn: 1 }), // Start on Monday
-    end: endOfWeek(new Date(), { weekStartsOn: 1 })
+    start: startOfWeek(new Date(), { weekStartsOn: 1 }),
+    end: endOfWeek(new Date(), { weekStartsOn: 1 }),
   });
-
-  const [extraName, setExtraName] = useState("");
-  const [extraAmount, setExtraAmount] = useState("1");
-  const [extraUnit, setExtraUnit] = useState("szt");
-  const [snapshotName, setSnapshotName] = useState("");
+  const [generatedRange, setGeneratedRange] = useState<{ startDate: string; endDate: string } | null>(null);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null);
-  const [newSnapshotItemName, setNewSnapshotItemName] = useState("");
-  const [newSnapshotItemAmount, setNewSnapshotItemAmount] = useState("1");
-  const [newSnapshotItemUnit, setNewSnapshotItemUnit] = useState("szt");
+  const [snapshotName, setSnapshotName] = useState("");
+  const { toast } = useToast();
 
   const startStr = format(range.start, "yyyy-MM-dd");
   const endStr = format(range.end, "yyyy-MM-dd");
-  const { toast } = useToast();
 
-  const { data: list = [], isLoading, isFetching, isError, error, refetch } = useShoppingList(startStr, endStr);
-  
-  const { data: checkedItems = {} } = useQuery<Record<number, boolean>>({
-    queryKey: ["/api/shopping-list/checks", startStr, endStr],
+  const { data: generatedItems = [], isLoading: isGenerating } = useShoppingList(
+    generatedRange?.startDate || "",
+    generatedRange?.endDate || "",
+    !!generatedRange,
+  );
+
+  const { data: activeLists = [] } = useQuery<any[]>({
+    queryKey: ["/api/shopping-lists/active"],
     queryFn: async () => {
-      const response = await fetchWithTimeout(`/api/shopping-list/checks?startDate=${startStr}&endDate=${endStr}`, {}, 10000);
-      if (!response.ok) throw new Error("Nie udało się pobrać statusów");
+      const response = await fetchWithTimeout("/api/shopping-lists/active", {}, 10000);
+      if (!response.ok) throw new Error("Nie udało się pobrać aktywnych list");
       return response.json();
     },
-    refetchInterval: 3000, // Poll every 3 seconds for multi-device sync
-    placeholderData: (previousData) => previousData ?? {},
-  });
-
-  const { data: excludedItems = [] } = useQuery<number[]>({
-    queryKey: ["/api/shopping-list/exclusions", startStr, endStr],
-    queryFn: async () => {
-      const response = await fetchWithTimeout(`/api/shopping-list/exclusions?startDate=${startStr}&endDate=${endStr}`, {}, 10000);
-      if (!response.ok) throw new Error("Nie udało się pobrać wykluczeń");
-      return response.json();
-    },
-    refetchInterval: 5000,
     placeholderData: (previousData) => previousData ?? [],
   });
 
-  const { data: snapshots = [] } = useQuery<any[]>({
+  const { data: historyLists = [] } = useQuery<any[]>({
     queryKey: ["/api/shopping-lists/snapshots"],
     queryFn: async () => {
       const response = await fetchWithTimeout("/api/shopping-lists/snapshots", {}, 10000);
-      if (!response.ok) throw new Error("Nie udało się pobrać historii list");
+      if (!response.ok) throw new Error("Nie udało się pobrać historii");
       return response.json();
     },
     placeholderData: (previousData) => previousData ?? [],
@@ -97,698 +80,209 @@ export default function ShoppingList() {
     enabled: selectedSnapshotId !== null,
   });
 
-  const toggleMutation = useMutation({
-    mutationFn: async ({ id, checked }: { id: number; checked: boolean }) => {
-      await apiRequest("POST", "/api/shopping-list/checks", {
-        ingredientId: id,
-        isChecked: checked,
-        startDate: startStr,
-        endDate: endStr,
-      });
-    },
-    onMutate: async ({ id, checked }) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/shopping-list/checks", startStr, endStr] });
-      const previousChecks = queryClient.getQueryData<Record<number, boolean>>(["/api/shopping-list/checks", startStr, endStr]) ?? {};
-
-      queryClient.setQueryData<Record<number, boolean>>(["/api/shopping-list/checks", startStr, endStr], {
-        ...previousChecks,
-        [id]: checked,
-      });
-
-      return { previousChecks };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previousChecks) {
-        queryClient.setQueryData(["/api/shopping-list/checks", startStr, endStr], context.previousChecks);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/checks", startStr, endStr] });
-    }
-  });
-
-
-  const addExtraMutation = useMutation({
-    mutationFn: async ({ name, amount, unit }: { name: string; amount: number; unit: string }) => {
-      await apiRequest("POST", "/api/shopping-list/extras", { name, amount, unit, startDate: startStr, endDate: endStr });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
-      setExtraName("");
-      setExtraAmount("1");
-      setExtraUnit("szt");
-    }
-  });
-
-  const deleteExtraMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/shopping-list/extras/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
-    }
-  });
-
-  const toggleExclusionMutation = useMutation({
-    mutationFn: async ({ ingredientId, excluded }: { ingredientId: number; excluded: boolean }) => {
-      await apiRequest("POST", "/api/shopping-list/exclusions", {
-        ingredientId,
-        excluded,
-        startDate: startStr,
-        endDate: endStr,
-      });
-    },
-    onMutate: async ({ ingredientId, excluded }) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/shopping-list/exclusions", startStr, endStr] });
-
-      const previousExcluded = queryClient.getQueryData<number[]>(["/api/shopping-list/exclusions", startStr, endStr]) ?? [];
-      const nextExcluded = excluded
-        ? Array.from(new Set([...previousExcluded, ingredientId]))
-        : previousExcluded.filter((id) => id !== ingredientId);
-
-      queryClient.setQueryData<number[]>(["/api/shopping-list/exclusions", startStr, endStr], nextExcluded);
-
-      return { previousExcluded };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previousExcluded) {
-        queryClient.setQueryData(["/api/shopping-list/exclusions", startStr, endStr], context.previousExcluded);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list/exclusions", startStr, endStr] });
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
-    }
-  });
-
-  const saveSnapshotMutation = useMutation({
+  const saveListMutation = useMutation({
     mutationFn: async () => {
-      const fallbackName = `Lista ${format(range.start, "dd.MM")} - ${format(range.end, "dd.MM")}`;
+      if (!generatedRange) throw new Error("Najpierw wygeneruj listę.");
+      const fallbackName = `Lista ${generatedRange.startDate} - ${generatedRange.endDate}`;
       const payload = {
         name: snapshotName.trim() || fallbackName,
-        periodStart: startStr,
-        periodEnd: endStr,
-        items: (list || []).map((item: any) => {
-          const isAtHome = !item.isExtra && excludedItems.includes(item.ingredientId);
-          const isBought = item.isExtra ? !!item.isChecked : !!checkedItems[item.ingredientId];
-          const status = isAtHome ? "AT_HOME" : (isBought ? "BOUGHT" : "NOT_BOUGHT");
-          return {
-            ingredientId: item.isExtra ? null : item.ingredientId,
-            name: item.name,
-            totalAmount: Number(item.totalAmount || 0),
-            unit: item.unit || "g",
-            category: item.category || "Inne",
-            status,
-            isExtra: !!item.isExtra,
-            price: 0,
-          };
-        }),
+        periodStart: generatedRange.startDate,
+        periodEnd: generatedRange.endDate,
+        items: generatedItems.map((item: any) => ({
+          ingredientId: item.ingredientId,
+          name: item.name,
+          totalAmount: Number(item.totalAmount || 0),
+          unit: item.unit || "g",
+          category: item.category || "Inne",
+          status: "NOT_BOUGHT",
+          price: 0,
+          isExtra: false,
+        })),
       };
       const response = await apiRequest("POST", "/api/shopping-lists/snapshots", payload);
       return response.json();
     },
-    onSuccess: (savedSnapshot: any) => {
-      if (savedSnapshot?.id) {
-        setSelectedSnapshotId(savedSnapshot.id);
-      }
+    onSuccess: (snapshot: any) => {
       setSnapshotName("");
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
-      toast({
-        title: "Lista zapisana",
-        description: "Lista pojawiła się w historii zapisanych list.",
-      });
+      setSelectedSnapshotId(snapshot.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/active"] });
+      toast({ title: "Lista zapisana", description: "Lista czeka na realizację zakupów." });
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Nie udało się zapisać listy",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
   });
 
-  const updateSnapshotItemMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: SnapshotItemUpdate }) => {
+  const updateItemMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: { status?: ItemStatus; price?: number } }) => {
       await apiRequest("PATCH", `/api/shopping-lists/snapshot-items/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots", selectedSnapshotId] });
-    }
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
+    },
   });
 
-  const addSnapshotItemMutation = useMutation({
-    mutationFn: async ({ snapshotId, payload }: { snapshotId: number; payload: { name: string; totalAmount: number; unit: string } }) => {
-      await apiRequest("POST", `/api/shopping-lists/snapshots/${snapshotId}/items`, payload);
+  const completeListMutation = useMutation({
+    mutationFn: async (snapshotId: number) => {
+      await apiRequest("POST", `/api/shopping-lists/snapshots/${snapshotId}/complete`, {});
     },
     onSuccess: () => {
-      setNewSnapshotItemName("");
-      setNewSnapshotItemAmount("1");
-      setNewSnapshotItemUnit("szt");
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots", selectedSnapshotId] });
-      toast({
-        title: "Dodano produkt",
-        description: "Pozycja została dodana do zapisanej listy.",
-      });
+      setSelectedSnapshotId(null);
+      toast({ title: "Zakupy zakończone", description: "Lista została przeniesiona do historii." });
     },
   });
 
-  const deleteSnapshotItemMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/shopping-lists/snapshot-items/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots", selectedSnapshotId] });
-    },
-  });
+  const generatedPreview = useMemo(() => {
+    return [...generatedItems].sort((a: any, b: any) => a.name.localeCompare(b.name, "pl"));
+  }, [generatedItems]);
 
-  const excludedSet = useMemo(() => new Set(excludedItems), [excludedItems]);
-
-  const activeItems = (list || []).filter((item: any) => item.isExtra || !excludedSet.has(item.ingredientId));
-  const excludedFromHomeItems = (list || []).filter((item: any) => !item.isExtra && excludedSet.has(item.ingredientId));
-
-  const sortedActiveItems = useMemo(() => {
-    return [...activeItems].sort((a: any, b: any) => {
-      const aChecked = a.isExtra ? !!a.isChecked : !!checkedItems[a.ingredientId];
-      const bChecked = b.isExtra ? !!b.isChecked : !!checkedItems[b.ingredientId];
-
-      if (aChecked !== bChecked) {
-        return Number(aChecked) - Number(bChecked);
-      }
-
-      return a.name.localeCompare(b.name, "pl");
-    });
-  }, [activeItems, checkedItems]);
-
-  const uncheckedActiveItems = sortedActiveItems.filter((item: any) => {
-    const isChecked = item.isExtra ? !!item.isChecked : !!checkedItems[item.ingredientId];
-    return !isChecked;
-  });
-
-  const checkedActiveItems = sortedActiveItems.filter((item: any) => {
-    const isChecked = item.isExtra ? !!item.isChecked : !!checkedItems[item.ingredientId];
-    return isChecked;
-  });
-
-  const groupByCategory = (items: any[]) =>
-    items.reduce((acc: Record<string, any[]>, item: any) => {
-      const category = item.category || "Inne";
-      if (!acc[category]) acc[category] = [];
-      acc[category].push(item);
-      return acc;
-    }, {});
-
-  const uncheckedGroupedList = groupByCategory(uncheckedActiveItems);
-  const uncheckedCategories = Object.keys(uncheckedGroupedList).sort();
-
-  const toggleCheck = (item: any) => {
-    if (item.isExtra) {
-      const currentStatus = !!item.isChecked;
-      apiRequest("PATCH", `/api/shopping-list/extras/${item.extraId}`, { isChecked: !currentStatus }).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/shopping-list", startStr, endStr] });
-      });
-      return;
-    }
-
-    const currentStatus = !!checkedItems[item.ingredientId];
-    toggleMutation.mutate({ id: item.ingredientId, checked: !currentStatus });
-  };
-
-  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newDate = new Date(e.target.value);
-    if (!isNaN(newDate.getTime())) {
-      setRange(prev => ({ ...prev, start: newDate }));
-    }
-  };
-
-  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newDate = new Date(e.target.value);
-    if (!isNaN(newDate.getTime())) {
-      setRange(prev => ({ ...prev, end: newDate }));
-    }
-  };
-
-  const handleAddExtra = () => {
-    const trimmed = extraName.trim();
-    if (!trimmed) return;
-    const parsedAmount = Number(extraAmount);
-    addExtraMutation.mutate({
-      name: trimmed,
-      amount: Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 1,
-      unit: extraUnit.trim() || "szt",
-    });
-  };
-
-  const nextStatus = (current: string) => {
-    if (current === "NOT_BOUGHT") return "BOUGHT";
-    if (current === "BOUGHT") return "AT_HOME";
-    return "NOT_BOUGHT";
-  };
-
-  const statusLabel = (status: string) => {
-    if (status === "BOUGHT") return "Kupione";
-    if (status === "AT_HOME") return "W domu";
-    return "Niekupione";
-  };
-
-  const handleAddSnapshotItem = () => {
-    if (!selectedSnapshotId) return;
-
-    const trimmedName = newSnapshotItemName.trim();
-    if (!trimmedName) return;
-
-    const parsedAmount = Number(newSnapshotItemAmount);
-    addSnapshotItemMutation.mutate({
-      snapshotId: selectedSnapshotId,
-      payload: {
-        name: trimmedName,
-        totalAmount: Number.isFinite(parsedAmount) && parsedAmount >= 0 ? parsedAmount : 0,
-        unit: newSnapshotItemUnit.trim() || "szt",
-      },
-    });
-  };
-
-  const handleExportPdf = () => {
-    const printWindow = window.open("", "_blank", "width=900,height=1200");
-    if (!printWindow) return;
-
-    const printDate = format(new Date(), "yyyy-MM-dd HH:mm");
-    const groupedListForExport = groupByCategory(sortedActiveItems);
-    const categoriesForExport = Object.keys(groupedListForExport).sort();
-
-    const content = categoriesForExport
-      .map((category) => {
-        const rows = groupedListForExport[category]
-          .map((item: any) => {
-            const isChecked = checkedItems[item.ingredientId] ? "✓" : "☐";
-            return `<tr>
-              <td style="padding: 6px 8px; border-bottom: 1px solid #eee; width: 30px;">${isChecked}</td>
-              <td style="padding: 6px 8px; border-bottom: 1px solid #eee;">${item.name}</td>
-              <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right; white-space: nowrap;">${formatAmount(item.totalAmount)} ${item.unit}</td>
-            </tr>`;
-          })
-          .join("");
-
-        return `
-          <section style="margin-bottom: 18px;">
-            <h2 style="font-size: 14px; text-transform: uppercase; color: #6b7280; margin: 0 0 8px;">${category}</h2>
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-              <tbody>${rows}</tbody>
-            </table>
-          </section>
-        `;
-      })
-      .join("");
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Lista zakupów ${startStr} - ${endStr}</title>
-        </head>
-        <body style="font-family: Inter, Arial, sans-serif; margin: 24px; color: #111827;">
-          <h1 style="margin-bottom: 4px;">Lista zakupów</h1>
-          <p style="margin-top: 0; color: #6b7280;">
-            Okres: ${format(range.start, "d MMMM yyyy", { locale: pl })} - ${format(range.end, "d MMMM yyyy", { locale: pl })}<br/>
-            Wygenerowano: ${printDate}
-          </p>
-          ${content || '<p>Brak produktów dla wybranego okresu.</p>'}
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-  };
+  const generatedCount = generatedPreview.length;
 
   return (
     <Layout>
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">Lista zakupów</h1>
-          <p className="text-muted-foreground">Wszystko czego potrzebujesz na wybrany okres.</p>
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">Lista zakupów</h1>
+            <p className="text-muted-foreground">Generuj listę dla zakresu dat, zapisz ją i realizuj w sklepie.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input type="date" value={startStr} onChange={(e) => setRange((prev) => ({ ...prev, start: new Date(e.target.value) }))} className="w-40" />
+            <Input type="date" value={endStr} onChange={(e) => setRange((prev) => ({ ...prev, end: new Date(e.target.value) }))} className="w-40" />
+            <Button onClick={() => setGeneratedRange({ startDate: startStr, endDate: endStr })}>Generuj listę</Button>
+          </div>
         </div>
-        
-        <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-3 rounded-2xl border border-border shadow-sm">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Od:</label>
-            <Input 
-              type="date" 
-              value={startStr} 
-              onChange={handleStartDateChange}
-              className="h-9 w-40 rounded-lg border-muted"
+
+        <div className="bg-white rounded-2xl border p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Podgląd wygenerowanej listy</h2>
+            <span className="text-xs text-muted-foreground">{generatedCount} pozycji</span>
+          </div>
+          {!generatedRange ? (
+            <p className="text-sm text-muted-foreground">Wybierz zakres dat i kliknij „Generuj listę”.</p>
+          ) : isGenerating ? (
+            <LoadingSpinner />
+          ) : generatedCount === 0 ? (
+            <p className="text-sm text-muted-foreground">Brak produktów dla wybranego zakresu.</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-auto pr-1">
+              {generatedPreview.map((item: any) => (
+                <div key={item.ingredientId} className="flex justify-between text-sm border-b pb-1">
+                  <span>{item.name}</span>
+                  <span className="text-muted-foreground">{formatAmount(item.totalAmount)} {item.unit}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-col md:flex-row gap-2">
+            <Input
+              value={snapshotName}
+              onChange={(e) => setSnapshotName(e.target.value)}
+              placeholder="Nazwa listy (opcjonalnie)"
             />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Do:</label>
-            <Input 
-              type="date" 
-              value={endStr} 
-              onChange={handleEndDateChange}
-              className="h-9 w-40 rounded-lg border-muted"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-6 p-4 bg-primary/5 rounded-2xl border border-primary/10 flex items-center gap-3">
-        <Calendar className="w-5 h-5 text-primary" />
-        <span className="text-sm font-medium">
-          Wybrany okres: <span className="font-bold text-primary">
-            {format(range.start, "d MMMM", { locale: pl })} - {format(range.end, "d MMMM", { locale: pl })}
-          </span>
-        </span>
-      </div>
-
-
-      <div className="mb-6 p-4 bg-white rounded-2xl border border-border shadow-sm space-y-3">
-        <p className="text-sm font-semibold">Dodaj własny produkt (np. worki na śmieci, płyn do naczyń)</p>
-        <div className="flex flex-col md:flex-row gap-2">
-          <Input value={extraName} onChange={(e) => setExtraName(e.target.value)} placeholder="Nazwa produktu" className="md:flex-1" />
-          <Input value={extraAmount} onChange={(e) => setExtraAmount(e.target.value)} type="number" min="0.1" step="0.1" className="md:w-28" />
-          <Input value={extraUnit} onChange={(e) => setExtraUnit(e.target.value)} placeholder="szt" className="md:w-28" />
-          <Button type="button" onClick={handleAddExtra} className="md:w-auto">
-            <Plus className="w-4 h-4 mr-2" />Dodaj
-          </Button>
-        </div>
-      </div>
-
-      {isFetching && list.length > 0 && (
-        <div className="mb-3 text-xs text-muted-foreground">Odświeżam listę zakupów…</div>
-      )}
-
-      {isLoading && list.length === 0 ? <LoadingSpinner /> : isError && list.length === 0 ? (
-        <div className="bg-white rounded-3xl shadow-sm border border-border/50 p-8 text-center space-y-3">
-          <p className="text-sm text-red-600 font-medium">Nie udało się wczytać listy zakupów.</p>
-          <p className="text-xs text-muted-foreground">{error instanceof Error ? error.message : "Spróbuj ponownie za chwilę."}</p>
-          <Button type="button" variant="outline" onClick={() => refetch()} className="h-9">
-            Spróbuj ponownie
-          </Button>
-        </div>
-      ) : (
-        <div className="bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
-          <div className="p-6 bg-primary/5 border-b border-border/50 flex items-center justify-between">
-            <h2 className="font-bold text-lg flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-primary" />
-              Produkty do kupienia
-            </h2>
-            <span className="text-sm text-muted-foreground">{activeItems.length} pozycji</span>
-          </div>
-          
-          <div className="divide-y divide-border/50">
-            {activeItems.length === 0 ? (
-              <div className="p-12 text-center text-muted-foreground">
-                Twoja lista zakupów jest pusta dla tego okresu. Zaplanuj najpierw posiłki!
-              </div>
-            ) : (
-              <>
-                {uncheckedCategories.map((category) => (
-                  <div key={`unchecked-${category}`} className="bg-white">
-                    <div className="px-4 py-1.5 bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-y border-border/50">
-                      {category}
-                    </div>
-                    <div className="divide-y divide-border/50">
-                      {uncheckedGroupedList[category].map((item: any) => {
-                        const isChecked = item.isExtra ? item.isChecked : checkedItems[item.ingredientId];
-                        return (
-                          <div
-                            key={item.isExtra ? `extra-${item.extraId}` : `ingredient-${item.ingredientId}`}
-                            onClick={() => toggleCheck(item)}
-                            className={cn(
-                              "py-2 px-3 flex items-center justify-between hover:bg-muted/30 cursor-pointer transition-colors group",
-                              isChecked && "bg-muted/20"
-                            )}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className={cn(
-                                "w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0",
-                                isChecked ? "bg-primary border-primary" : "border-muted-foreground/30 group-hover:border-primary"
-                              )}>
-                                {isChecked && <Check className="w-3 h-3 text-white" />}
-                              </div>
-                              <span className={cn(
-                                "text-sm font-medium transition-all truncate",
-                                isChecked && "text-muted-foreground line-through decoration-border"
-                              )}>{item.name}</span>
-                            </div>
-                            <div className="flex items-center gap-2 pl-2 shrink-0">
-                              <div className="flex flex-col items-end gap-0.5">
-                                <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
-                                  {formatAmount(item.totalAmount)} {item.unit}
-                                </span>
-                                {Number(item.unitWeight || 0) > 0 && (
-                                  <span className="text-[9px] text-blue-600 font-medium bg-blue-50 px-1.5 py-0 rounded-full border border-blue-100">
-                                    ok. {formatAmount(item.totalAmount / Number(item.unitWeight))} szt.
-                                  </span>
-                                )}
-                              </div>
-                              {item.isExtra ? (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteExtraMutation.mutate(item.extraId);
-                                  }}
-                                >
-                                  <X className="w-3.5 h-3.5 text-red-500" />
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="outline"
-                                  className="h-6 px-1.5 text-[9px]"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const isExcluded = excludedItems.includes(item.ingredientId);
-                                    toggleExclusionMutation.mutate({ ingredientId: item.ingredientId, excluded: !isExcluded });
-                                  }}
-                                >
-                                  {excludedItems.includes(item.ingredientId) ? "W domu" : "Mam w domu"}
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {checkedActiveItems.length > 0 && (
-        <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
-          <div className="px-4 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
-            <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Kupione</h2>
-            <span className="text-xs text-muted-foreground">{checkedActiveItems.length} pozycji</span>
-          </div>
-          <div className="divide-y divide-border/40">
-            {checkedActiveItems.map((item: any) => {
-              const isChecked = item.isExtra ? item.isChecked : checkedItems[item.ingredientId];
-              return (
-                <div
-                  key={item.isExtra ? `checked-extra-${item.extraId}` : `checked-ingredient-${item.ingredientId}`}
-                  onClick={() => toggleCheck(item)}
-                  className="py-2 px-3 flex items-center justify-between hover:bg-muted/20 cursor-pointer transition-colors group bg-muted/10"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={cn(
-                      "w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0",
-                      isChecked ? "bg-primary border-primary" : "border-muted-foreground/30 group-hover:border-primary"
-                    )}>
-                      {isChecked && <Check className="w-3 h-3 text-white" />}
-                    </div>
-                    <span className="text-sm font-medium text-muted-foreground line-through decoration-border truncate">{item.name}</span>
-                  </div>
-                  <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded shrink-0 ml-2">
-                    {formatAmount(item.totalAmount)} {item.unit}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {excludedFromHomeItems.length > 0 && (
-        <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
-          <div className="p-6 bg-muted/40 border-b border-border/50 flex items-center justify-between">
-            <h2 className="font-bold text-lg">Posiadane</h2>
-            <span className="text-sm text-muted-foreground">{excludedFromHomeItems.length} pozycji</span>
-          </div>
-          <div className="divide-y divide-border/50">
-            {excludedFromHomeItems.map((item: any) => (
-              <div key={`excluded-${item.ingredientId}`} className="py-2 px-3 flex items-center justify-between bg-muted/10">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-4 h-4 rounded-full border border-muted-foreground/30" />
-                  <span className="text-sm font-medium text-muted-foreground">{item.name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
-                    {formatAmount(item.totalAmount)} {item.unit}
-                  </span>
-                  <Button
-                    variant="outline"
-                    className="h-6 px-1.5 text-[9px]"
-                    onClick={() => toggleExclusionMutation.mutate({ ingredientId: item.ingredientId, excluded: false })}
-                  >
-                    Przywróć
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <div className="bg-white rounded-3xl shadow-sm border border-border/50 p-5 space-y-3">
-          <h3 className="font-semibold">Zapisz listę</h3>
-          <p className="text-sm text-muted-foreground">Nadaj nazwę i zapisz aktualny stan: kupione / w domu / niekupione.</p>
-          <div className="flex gap-2">
-            <Input value={snapshotName} onChange={(e) => setSnapshotName(e.target.value)} placeholder="Np. Zakupy na tydzień 12" />
-            <Button type="button" onClick={() => saveSnapshotMutation.mutate()} disabled={saveSnapshotMutation.isPending || list.length === 0}>
-              <Save className="w-4 h-4 mr-2" />Zapisz
+            <Button
+              onClick={() => saveListMutation.mutate()}
+              disabled={!generatedRange || generatedCount === 0 || saveListMutation.isPending}
+            >
+              Zapisz listę
             </Button>
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl shadow-sm border border-border/50 p-5 space-y-3">
-          <h3 className="font-semibold">Historia list</h3>
-          <div className="space-y-2 max-h-72 overflow-auto pr-1">
-            {snapshots.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Brak zapisanych list.</p>
-            ) : snapshots.map((snapshot: any) => (
+        <div className="bg-white rounded-2xl border p-4 space-y-2">
+          <h2 className="font-semibold">Aktywne listy</h2>
+          {activeLists.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Brak aktywnych list.</p>
+          ) : (
+            activeLists.map((list: any) => (
               <button
-                key={snapshot.id}
+                key={list.id}
                 type="button"
-                onClick={() => setSelectedSnapshotId(snapshot.id)}
+                onClick={() => setSelectedSnapshotId(list.id)}
                 className={cn(
-                  "w-full text-left p-3 rounded-xl border transition",
-                  selectedSnapshotId === snapshot.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/20"
+                  "w-full text-left p-3 rounded-xl border",
+                  selectedSnapshotId === list.id ? "border-primary bg-primary/5" : "border-border",
                 )}
               >
-                <p className="font-medium">{snapshot.name}</p>
-                <p className="text-xs text-muted-foreground">{snapshot.periodStart} - {snapshot.periodEnd}</p>
-                <p className="text-xs text-muted-foreground mt-1">Kupione: {snapshot.bought} • W domu: {snapshot.atHome} • Niekupione: {snapshot.notBought} • Koszt: {formatAmount(snapshot.totalCost || 0)} zł</p>
+                <p className="font-medium">{list.name}</p>
+                <p className="text-xs text-muted-foreground">{list.periodStart} - {list.periodEnd}</p>
               </button>
-            ))}
-          </div>
+            ))
+          )}
         </div>
-      </div>
 
-      {selectedSnapshot && (
-        <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
-          <div className="p-5 border-b border-border/50 space-y-3">
-            <div>
-              <h3 className="font-semibold">{selectedSnapshot.name}</h3>
-              <p className="text-xs text-muted-foreground">Kliknij status, aby przełączać: Niekupione → Kupione → W domu.</p>
+        {selectedSnapshot && (
+          <div className="bg-white rounded-2xl border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold">{selectedSnapshot.name}</h3>
+                <p className="text-xs text-muted-foreground">Klikaj status: Do kupienia → Mam w domu → Kupione.</p>
+              </div>
+              {selectedSnapshot.status !== "COMPLETED" && (
+                <Button onClick={() => completeListMutation.mutate(selectedSnapshot.id)}>
+                  Zakończ zakupy
+                </Button>
+              )}
             </div>
-            <div className="flex flex-col md:flex-row gap-2">
-              <Input
-                value={newSnapshotItemName}
-                onChange={(e) => setNewSnapshotItemName(e.target.value)}
-                placeholder="Dodaj produkt do zapisanej listy"
-              />
-              <Input
-                type="number"
-                min="0"
-                step="0.1"
-                className="md:w-28"
-                value={newSnapshotItemAmount}
-                onChange={(e) => setNewSnapshotItemAmount(e.target.value)}
-              />
-              <Input
-                className="md:w-28"
-                value={newSnapshotItemUnit}
-                onChange={(e) => setNewSnapshotItemUnit(e.target.value)}
-              />
-              <Button type="button" onClick={handleAddSnapshotItem} disabled={addSnapshotItemMutation.isPending}>
-                <Plus className="w-4 h-4 mr-2" />Dodaj
-              </Button>
-            </div>
-          </div>
-          <div className="divide-y divide-border/50">
-            {(selectedSnapshot.items || []).map((item: any) => (
-              <div key={item.id} className="p-3 flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-                    <Input
-                      className="h-8"
-                      defaultValue={item.name}
-                      onBlur={(e) => {
-                        const name = e.target.value.trim();
-                        if (name && name !== item.name) {
-                          updateSnapshotItemMutation.mutate({ id: item.id, data: { name } });
-                        }
-                      }}
-                    />
+
+            <div className="divide-y">
+              {(selectedSnapshot.items || []).map((item: any) => (
+                <div key={item.id} className="py-2 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatAmount(item.totalAmount)} {item.unit}</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={() => updateItemMutation.mutate({ id: item.id, data: { status: nextStatus(item.status as ItemStatus) } })}
+                      disabled={selectedSnapshot.status === "COMPLETED"}
+                    >
+                      {statusLabel(item.status as ItemStatus)}
+                    </Button>
                     <Input
                       type="number"
                       min="0"
-                      step="0.1"
-                      defaultValue={Number(item.totalAmount || 0)}
+                      step="0.01"
                       className="h-8 w-24"
+                      defaultValue={Number(item.price || 0)}
+                      disabled={selectedSnapshot.status === "COMPLETED"}
                       onBlur={(e) => {
-                        const totalAmount = Number(e.target.value);
-                        if (Number.isFinite(totalAmount) && totalAmount >= 0 && totalAmount !== Number(item.totalAmount || 0)) {
-                          updateSnapshotItemMutation.mutate({ id: item.id, data: { totalAmount } });
-                        }
-                      }}
-                    />
-                    <Input
-                      className="h-8 w-24"
-                      defaultValue={item.unit}
-                      onBlur={(e) => {
-                        const unit = e.target.value.trim();
-                        if (unit && unit !== item.unit) {
-                          updateSnapshotItemMutation.mutate({ id: item.id, data: { unit } });
+                        const price = Number(e.target.value);
+                        if (Number.isFinite(price) && price >= 0) {
+                          updateItemMutation.mutate({ id: item.id, data: { price } });
                         }
                       }}
                     />
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" className="h-8 text-xs" onClick={() => updateSnapshotItemMutation.mutate({ id: item.id, data: { status: nextStatus(item.status) } })}>
-                    {statusLabel(item.status)}
-                  </Button>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    defaultValue={Number(item.price || 0)}
-                    className="h-8 w-24"
-                    onBlur={(e) => {
-                      const price = Number(e.target.value);
-                      if (Number.isFinite(price) && price >= 0) {
-                        updateSnapshotItemMutation.mutate({ id: item.id, data: { price } });
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-8 px-2"
-                    onClick={() => deleteSnapshotItemMutation.mutate(item.id)}
-                    disabled={deleteSnapshotItemMutation.isPending}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+        )}
+
+        <div className="bg-white rounded-2xl border p-4 space-y-2">
+          <h2 className="font-semibold">Historia</h2>
+          {historyLists.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Brak zakończonych list.</p>
+          ) : (
+            historyLists.map((snapshot: any) => (
+              <div key={snapshot.id} className="p-3 rounded-xl border">
+                <p className="font-medium">{snapshot.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {snapshot.periodStart} - {snapshot.periodEnd} • Kupione: {snapshot.bought} • W domu: {snapshot.atHome} • Koszt: {formatAmount(snapshot.totalCost || 0)} zł
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Zakończono: {snapshot.completedAt ? format(new Date(snapshot.completedAt), "d MMM yyyy HH:mm", { locale: pl }) : "-"}
+                </p>
+              </div>
+            ))
+          )}
         </div>
-      )}
+      </div>
     </Layout>
   );
 }

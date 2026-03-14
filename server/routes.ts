@@ -819,6 +819,11 @@ export async function registerRoutes(
     res.json(snapshots);
   });
 
+  app.get("/api/shopping-lists/active", async (_req, res) => {
+    const snapshots = await storage.getActiveShoppingListSnapshots();
+    res.json(snapshots);
+  });
+
   app.get("/api/shopping-lists/snapshots/:id", async (req, res) => {
     const snapshotId = Number(req.params.id);
     if (!Number.isFinite(snapshotId) || snapshotId <= 0) {
@@ -831,6 +836,21 @@ export async function registerRoutes(
     }
 
     res.json(snapshot);
+  });
+
+  app.post("/api/shopping-lists/snapshots/:id/complete", async (req, res) => {
+    const snapshotId = Number(req.params.id);
+    if (!Number.isFinite(snapshotId) || snapshotId <= 0) {
+      return res.status(400).json({ message: "Niepoprawny identyfikator listy" });
+    }
+
+    const snapshot = await storage.getShoppingListSnapshotById(snapshotId);
+    if (!snapshot) {
+      return res.status(404).json({ message: "Lista nie istnieje" });
+    }
+
+    const completed = await storage.completeShoppingListSnapshot(snapshotId);
+    res.json(completed);
   });
 
   app.patch("/api/shopping-lists/snapshot-items/:id", async (req, res) => {

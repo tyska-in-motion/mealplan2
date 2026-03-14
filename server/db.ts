@@ -252,6 +252,13 @@ export async function ensureDbCompat() {
   await pool.query(`ALTER TABLE shopping_list_snapshots ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT now()`);
   await pool.query(`ALTER TABLE shopping_list_snapshot_items ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT now()`);
 
+  await pool.query(`ALTER TABLE shopping_list_snapshots ADD COLUMN IF NOT EXISTS status text DEFAULT 'ACTIVE'`);
+  await pool.query(`UPDATE shopping_list_snapshots SET status = 'ACTIVE' WHERE status IS NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshots ALTER COLUMN status SET NOT NULL`);
+  await pool.query(`ALTER TABLE shopping_list_snapshots ALTER COLUMN status SET DEFAULT 'ACTIVE'`);
+
+  await pool.query(`ALTER TABLE shopping_list_snapshots ADD COLUMN IF NOT EXISTS completed_at timestamp`);
+
   await pool.query(`CREATE TABLE IF NOT EXISTS shared_meal_batches (
     id serial PRIMARY KEY,
     recipe_id integer NOT NULL,
