@@ -3,7 +3,7 @@ import { Layout } from "@/components/Layout";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { useShoppingList } from "@/hooks/use-meal-plan";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { Check, ShoppingCart, Calendar, Plus, X } from "lucide-react";
+import { Check, ShoppingCart, Calendar, Plus, X, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,8 @@ export default function ShoppingList() {
   const [extraName, setExtraName] = useState("");
   const [extraAmount, setExtraAmount] = useState("1");
   const [extraUnit, setExtraUnit] = useState("szt");
+  const [snapshotName, setSnapshotName] = useState("");
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null);
 
   const startStr = format(range.start, "yyyy-MM-dd");
   const endStr = format(range.end, "yyyy-MM-dd");
@@ -57,6 +59,26 @@ export default function ShoppingList() {
     },
     refetchInterval: 5000,
     placeholderData: (previousData) => previousData ?? [],
+  });
+
+  const { data: snapshots = [] } = useQuery<any[]>({
+    queryKey: ["/api/shopping-lists/snapshots"],
+    queryFn: async () => {
+      const response = await fetchWithTimeout("/api/shopping-lists/snapshots", {}, 10000);
+      if (!response.ok) throw new Error("Nie udało się pobrać historii list");
+      return response.json();
+    },
+    placeholderData: (previousData) => previousData ?? [],
+  });
+
+  const { data: selectedSnapshot } = useQuery<any>({
+    queryKey: ["/api/shopping-lists/snapshots", selectedSnapshotId],
+    queryFn: async () => {
+      const response = await fetchWithTimeout(`/api/shopping-lists/snapshots/${selectedSnapshotId}`, {}, 10000);
+      if (!response.ok) throw new Error("Nie udało się pobrać listy");
+      return response.json();
+    },
+    enabled: selectedSnapshotId !== null,
   });
 
   const toggleMutation = useMutation({
@@ -143,6 +165,47 @@ export default function ShoppingList() {
     }
   });
 
+  const saveSnapshotMutation = useMutation({
+    mutationFn: async () => {
+      const fallbackName = `Lista ${format(range.start, "dd.MM")} - ${format(range.end, "dd.MM")}`;
+      const payload = {
+        name: snapshotName.trim() || fallbackName,
+        periodStart: startStr,
+        periodEnd: endStr,
+        items: (list || []).map((item: any) => {
+          const isAtHome = !item.isExtra && excludedItems.includes(item.ingredientId);
+          const isBought = item.isExtra ? !!item.isChecked : !!checkedItems[item.ingredientId];
+          const status = isAtHome ? "AT_HOME" : (isBought ? "BOUGHT" : "NOT_BOUGHT");
+          return {
+            ingredientId: item.isExtra ? null : item.ingredientId,
+            name: item.name,
+            totalAmount: Number(item.totalAmount || 0),
+            unit: item.unit || "g",
+            category: item.category || "Inne",
+            status,
+            isExtra: !!item.isExtra,
+            price: 0,
+          };
+        }),
+      };
+      await apiRequest("POST", "/api/shopping-lists/snapshots", payload);
+    },
+    onSuccess: () => {
+      setSnapshotName("");
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
+    }
+  });
+
+  const updateSnapshotItemMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: { status?: string; price?: number } }) => {
+      await apiRequest("PATCH", `/api/shopping-lists/snapshot-items/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots", selectedSnapshotId] });
+    }
+  });
+
   const excludedSet = useMemo(() => new Set(excludedItems), [excludedItems]);
 
   const activeItems = (list || []).filter((item: any) => item.isExtra || !excludedSet.has(item.ingredientId));
@@ -218,6 +281,18 @@ export default function ShoppingList() {
       amount: Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 1,
       unit: extraUnit.trim() || "szt",
     });
+  };
+
+  const nextStatus = (current: string) => {
+    if (current === "NOT_BOUGHT") return "BOUGHT";
+    if (current === "BOUGHT") return "AT_HOME";
+    return "NOT_BOUGHT";
+  };
+
+  const statusLabel = (status: string) => {
+    if (status === "BOUGHT") return "Kupione";
+    if (status === "AT_HOME") return "W domu";
+    return "Niekupione";
   };
 
   const handleExportPdf = () => {
@@ -489,6 +564,80 @@ export default function ShoppingList() {
                   >
                     Przywróć
                   </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="bg-white rounded-3xl shadow-sm border border-border/50 p-5 space-y-3">
+          <h3 className="font-semibold">Zapisz listę</h3>
+          <p className="text-sm text-muted-foreground">Nadaj nazwę i zapisz aktualny stan: kupione / w domu / niekupione.</p>
+          <div className="flex gap-2">
+            <Input value={snapshotName} onChange={(e) => setSnapshotName(e.target.value)} placeholder="Np. Zakupy na tydzień 12" />
+            <Button type="button" onClick={() => saveSnapshotMutation.mutate()} disabled={saveSnapshotMutation.isPending || list.length === 0}>
+              <Save className="w-4 h-4 mr-2" />Zapisz
+            </Button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-sm border border-border/50 p-5 space-y-3">
+          <h3 className="font-semibold">Historia list</h3>
+          <div className="space-y-2 max-h-72 overflow-auto pr-1">
+            {snapshots.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Brak zapisanych list.</p>
+            ) : snapshots.map((snapshot: any) => (
+              <button
+                key={snapshot.id}
+                type="button"
+                onClick={() => setSelectedSnapshotId(snapshot.id)}
+                className={cn(
+                  "w-full text-left p-3 rounded-xl border transition",
+                  selectedSnapshotId === snapshot.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/20"
+                )}
+              >
+                <p className="font-medium">{snapshot.name}</p>
+                <p className="text-xs text-muted-foreground">{snapshot.periodStart} - {snapshot.periodEnd}</p>
+                <p className="text-xs text-muted-foreground mt-1">Kupione: {snapshot.bought} • W domu: {snapshot.atHome} • Niekupione: {snapshot.notBought} • Koszt: {formatAmount(snapshot.totalCost || 0)} zł</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {selectedSnapshot && (
+        <div className="mt-6 bg-white rounded-3xl shadow-sm border border-border/50 overflow-hidden">
+          <div className="p-5 border-b border-border/50">
+            <h3 className="font-semibold">{selectedSnapshot.name}</h3>
+            <p className="text-xs text-muted-foreground">Kliknij status, aby przełączać: Niekupione → Kupione → W domu.</p>
+          </div>
+          <div className="divide-y divide-border/50">
+            {(selectedSnapshot.items || []).map((item: any) => (
+              <div key={item.id} className="p-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">{formatAmount(Number(item.totalAmount || 0))} {item.unit}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" className="h-8 text-xs" onClick={() => updateSnapshotItemMutation.mutate({ id: item.id, data: { status: nextStatus(item.status) } })}>
+                    {statusLabel(item.status)}
+                  </Button>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={Number(item.price || 0)}
+                    className="h-8 w-24"
+                    onBlur={(e) => {
+                      const price = Number(e.target.value);
+                      if (Number.isFinite(price) && price >= 0) {
+                        updateSnapshotItemMutation.mutate({ id: item.id, data: { price } });
+                      }
+                    }}
+                  />
                 </div>
               </div>
             ))}

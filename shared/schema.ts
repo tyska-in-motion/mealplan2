@@ -241,6 +241,28 @@ export const shoppingListExcludedItems = pgTable("shopping_list_excluded_items",
   pk: primaryKey({ columns: [table.ingredientId, table.periodStart, table.periodEnd] }),
 }));
 
+export const shoppingListSnapshots = pgTable("shopping_list_snapshots", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const shoppingListSnapshotItems = pgTable("shopping_list_snapshot_items", {
+  id: serial("id").primaryKey(),
+  snapshotId: integer("snapshot_id").notNull().references(() => shoppingListSnapshots.id, { onDelete: "cascade" }),
+  ingredientId: integer("ingredient_id"),
+  name: text("name").notNull(),
+  totalAmount: real("total_amount").notNull().default(0),
+  unit: text("unit").notNull().default("g"),
+  category: text("category").notNull().default("Inne"),
+  status: text("status").notNull().default("NOT_BOUGHT"),
+  price: real("price").notNull().default(0),
+  isExtra: boolean("is_extra").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === SCHEMAS & TYPES ===
 
 export const insertIngredientSchema = createInsertSchema(ingredients).omit({ id: true });
