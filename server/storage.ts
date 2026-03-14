@@ -756,11 +756,43 @@ export class DatabaseStorage implements IStorage {
   async getShoppingListExcludedItems(periodStart: string, periodEnd: string): Promise<number[]> {
     const rows = await db.select().from(shoppingListExcludedItems).where(
       and(
-        eq(shoppingListExcludedItems.periodStart, periodStart),
-        eq(shoppingListExcludedItems.periodEnd, periodEnd),
+        lte(shoppingListExcludedItems.periodStart, periodStart),
+        gte(shoppingListExcludedItems.periodEnd, periodEnd),
       )
     );
-    return rows.map((row) => row.ingredientId);
+
+    const bestByIngredient = new Map<number, (typeof rows)[number] & { isExact: boolean; periodLength: number }>();
+
+    const getPeriodLength = (start: string, end: string) => {
+      const startDate = new Date(`${start}T00:00:00Z`);
+      const endDate = new Date(`${end}T00:00:00Z`);
+      const diff = endDate.getTime() - startDate.getTime();
+      return Number.isFinite(diff) && diff >= 0 ? diff : Number.POSITIVE_INFINITY;
+    };
+
+    for (const row of rows) {
+      const isExact = row.periodStart === periodStart && row.periodEnd === periodEnd;
+      const periodLength = getPeriodLength(row.periodStart, row.periodEnd);
+      const existing = bestByIngredient.get(row.ingredientId);
+
+      if (!existing) {
+        bestByIngredient.set(row.ingredientId, { ...row, isExact, periodLength });
+        continue;
+      }
+
+      const isBetterMatch =
+        (isExact && !existing.isExact)
+        || (isExact === existing.isExact && periodLength < existing.periodLength)
+        || (isExact === existing.isExact
+          && periodLength === existing.periodLength
+          && (row.updatedAt?.getTime() ?? 0) > (existing.updatedAt?.getTime() ?? 0));
+
+      if (isBetterMatch) {
+        bestByIngredient.set(row.ingredientId, { ...row, isExact, periodLength });
+      }
+    }
+
+    return Array.from(bestByIngredient.keys());
   }
 
   async setShoppingListExcludedItem(ingredientId: number, periodStart: string, periodEnd: string, excluded: boolean): Promise<void> {
@@ -777,8 +809,8 @@ export class DatabaseStorage implements IStorage {
     await db.delete(shoppingListExcludedItems).where(
       and(
         eq(shoppingListExcludedItems.ingredientId, ingredientId),
-        eq(shoppingListExcludedItems.periodStart, periodStart),
-        eq(shoppingListExcludedItems.periodEnd, periodEnd),
+        lte(shoppingListExcludedItems.periodStart, periodStart),
+        gte(shoppingListExcludedItems.periodEnd, periodEnd),
       )
     );
   }
