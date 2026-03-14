@@ -30,7 +30,7 @@ import {
   type UserSettings,
   type InstructionStep,
 } from "@shared/schema";
-import { eq, sql, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, sql, and, gte, lte, inArray, desc } from "drizzle-orm";
 
 export interface IStorage {
   // Ingredients
@@ -848,7 +848,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getShoppingListSnapshots(): Promise<any[]> {
-    const snapshots = await db.select().from(shoppingListSnapshots).orderBy(sql`${shoppingListSnapshots.createdAt} desc`);
+    const snapshots = await db.select().from(shoppingListSnapshots).orderBy(desc(shoppingListSnapshots.createdAt));
     if (snapshots.length === 0) return [];
 
     const items = await db.select().from(shoppingListSnapshotItems).where(

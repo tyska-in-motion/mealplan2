@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { pl } from "date-fns/locale";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, fetchWithTimeout, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 
 const roundToSingleDecimal = (value: number) => Math.round(value * 10) / 10;
@@ -36,6 +37,7 @@ export default function ShoppingList() {
 
   const startStr = format(range.start, "yyyy-MM-dd");
   const endStr = format(range.end, "yyyy-MM-dd");
+  const { toast } = useToast();
 
   const { data: list = [], isLoading, isFetching, isError, error, refetch } = useShoppingList(startStr, endStr);
   
@@ -188,11 +190,26 @@ export default function ShoppingList() {
           };
         }),
       };
-      await apiRequest("POST", "/api/shopping-lists/snapshots", payload);
+      const response = await apiRequest("POST", "/api/shopping-lists/snapshots", payload);
+      return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (savedSnapshot: any) => {
+      if (savedSnapshot?.id) {
+        setSelectedSnapshotId(savedSnapshot.id);
+      }
       setSnapshotName("");
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
+      toast({
+        title: "Lista zapisana",
+        description: "Lista pojawiła się w historii zapisanych list.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Nie udało się zapisać listy",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   });
 
