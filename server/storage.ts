@@ -668,11 +668,46 @@ export class DatabaseStorage implements IStorage {
   async getShoppingListChecks(periodStart: string, periodEnd: string): Promise<Record<number, boolean>> {
     const checks = await db.select().from(shoppingListChecks).where(
       and(
-        eq(shoppingListChecks.periodStart, periodStart),
-        eq(shoppingListChecks.periodEnd, periodEnd),
+        lte(shoppingListChecks.periodStart, periodStart),
+        gte(shoppingListChecks.periodEnd, periodEnd),
       )
     );
-    return checks.reduce((acc, curr) => {
+
+    const getPeriodLength = (start: string, end: string) => {
+      const startDate = new Date(`${start}T00:00:00Z`);
+      const endDate = new Date(`${end}T00:00:00Z`);
+      const diff = endDate.getTime() - startDate.getTime();
+      return Number.isFinite(diff) && diff >= 0 ? diff : Number.POSITIVE_INFINITY;
+    };
+
+    const bestByIngredient = new Map<number, (typeof checks)[number] & { isExact: boolean; periodLength: number }>();
+
+    for (const check of checks) {
+      const isExact = check.periodStart === periodStart && check.periodEnd === periodEnd;
+      const periodLength = getPeriodLength(check.periodStart, check.periodEnd);
+      const existing = bestByIngredient.get(check.ingredientId);
+
+      if (!existing) {
+        bestByIngredient.set(check.ingredientId, { ...check, isExact, periodLength });
+        continue;
+      }
+
+      const isBetterMatch =
+        // Exact match for selected range should always win.
+        (isExact && !existing.isExact)
+        // For same exactness, prefer narrower period (closer to requested range).
+        || (isExact === existing.isExact && periodLength < existing.periodLength)
+        // For ties, prefer the most recently updated status.
+        || (isExact === existing.isExact
+          && periodLength === existing.periodLength
+          && (check.updatedAt?.getTime() ?? 0) > (existing.updatedAt?.getTime() ?? 0));
+
+      if (isBetterMatch) {
+        bestByIngredient.set(check.ingredientId, { ...check, isExact, periodLength });
+      }
+    }
+
+    return Array.from(bestByIngredient.values()).reduce((acc, curr) => {
       acc[curr.ingredientId] = curr.isChecked;
       return acc;
     }, {} as Record<number, boolean>);
