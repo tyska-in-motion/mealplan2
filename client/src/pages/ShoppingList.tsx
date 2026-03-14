@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { pl } from "date-fns/locale";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Check } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { useShoppingList } from "@/hooks/use-meal-plan";
 import { Button } from "@/components/ui/button";
@@ -13,17 +14,10 @@ import { cn } from "@/lib/utils";
 
 type ItemStatus = "NOT_BOUGHT" | "AT_HOME" | "BOUGHT";
 
-const statusOrder: ItemStatus[] = ["NOT_BOUGHT", "AT_HOME", "BOUGHT"];
-
 const statusLabel = (status: ItemStatus) => {
   if (status === "AT_HOME") return "Mam w domu";
   if (status === "BOUGHT") return "Kupione";
   return "Do kupienia";
-};
-
-const nextStatus = (status: ItemStatus): ItemStatus => {
-  const idx = statusOrder.indexOf(status);
-  return statusOrder[(idx + 1) % statusOrder.length];
 };
 
 const formatAmount = (value: number) => {
@@ -31,12 +25,20 @@ const formatAmount = (value: number) => {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 };
 
+const groupByCategory = (items: any[]) => items.reduce((acc: Record<string, any[]>, item: any) => {
+  const category = item.category || "Inne";
+  if (!acc[category]) acc[category] = [];
+  acc[category].push(item);
+  return acc;
+}, {});
+
 export default function ShoppingList() {
   const [range, setRange] = useState({
     start: startOfWeek(new Date(), { weekStartsOn: 1 }),
     end: endOfWeek(new Date(), { weekStartsOn: 1 }),
   });
   const [generatedRange, setGeneratedRange] = useState<{ startDate: string; endDate: string } | null>(null);
+  const [generatedStatuses, setGeneratedStatuses] = useState<Record<number, ItemStatus>>({});
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null);
   const [snapshotName, setSnapshotName] = useState("");
   const { toast } = useToast();
@@ -49,6 +51,17 @@ export default function ShoppingList() {
     generatedRange?.endDate || "",
     !!generatedRange,
   );
+
+  useEffect(() => {
+    if (!generatedItems.length) return;
+    setGeneratedStatuses((prev) => {
+      const next: Record<number, ItemStatus> = {};
+      for (const item of generatedItems as any[]) {
+        next[item.ingredientId] = prev[item.ingredientId] || "NOT_BOUGHT";
+      }
+      return next;
+    });
+  }, [generatedItems]);
 
   const { data: activeLists = [] } = useQuery<any[]>({
     queryKey: ["/api/shopping-lists/active"],
@@ -88,13 +101,13 @@ export default function ShoppingList() {
         name: snapshotName.trim() || fallbackName,
         periodStart: generatedRange.startDate,
         periodEnd: generatedRange.endDate,
-        items: generatedItems.map((item: any) => ({
+        items: (generatedItems as any[]).map((item: any) => ({
           ingredientId: item.ingredientId,
           name: item.name,
           totalAmount: Number(item.totalAmount || 0),
           unit: item.unit || "g",
           category: item.category || "Inne",
-          status: "NOT_BOUGHT",
+          status: generatedStatuses[item.ingredientId] || "NOT_BOUGHT",
           price: 0,
           isExtra: false,
         })),
@@ -133,11 +146,37 @@ export default function ShoppingList() {
     },
   });
 
-  const generatedPreview = useMemo(() => {
-    return [...generatedItems].sort((a: any, b: any) => a.name.localeCompare(b.name, "pl"));
-  }, [generatedItems]);
+  const generatedWithStatus = useMemo(() => {
+    return [...(generatedItems as any[])].map((item: any) => ({
+      ...item,
+      status: generatedStatuses[item.ingredientId] || "NOT_BOUGHT",
+    }));
+  }, [generatedItems, generatedStatuses]);
 
-  const generatedCount = generatedPreview.length;
+  const generatedToBuy = generatedWithStatus.filter((item) => item.status === "NOT_BOUGHT");
+  const generatedAtHome = generatedWithStatus.filter((item) => item.status === "AT_HOME");
+  const generatedBought = generatedWithStatus.filter((item) => item.status === "BOUGHT");
+
+  const generatedGroupedToBuy = groupByCategory(generatedToBuy);
+  const generatedToBuyCategories = Object.keys(generatedGroupedToBuy).sort();
+
+  const generatedCount = generatedWithStatus.length;
+
+  const toggleGeneratedBought = (ingredientId: number) => {
+    setGeneratedStatuses((prev) => {
+      const current = prev[ingredientId] || "NOT_BOUGHT";
+      const next: ItemStatus = current === "BOUGHT" ? "NOT_BOUGHT" : "BOUGHT";
+      return { ...prev, [ingredientId]: next };
+    });
+  };
+
+  const toggleGeneratedAtHome = (ingredientId: number) => {
+    setGeneratedStatuses((prev) => {
+      const current = prev[ingredientId] || "NOT_BOUGHT";
+      const next: ItemStatus = current === "AT_HOME" ? "NOT_BOUGHT" : "AT_HOME";
+      return { ...prev, [ingredientId]: next };
+    });
+  };
 
   return (
     <Layout>
@@ -150,7 +189,12 @@ export default function ShoppingList() {
           <div className="flex flex-wrap items-center gap-2">
             <Input type="date" value={startStr} onChange={(e) => setRange((prev) => ({ ...prev, start: new Date(e.target.value) }))} className="w-40" />
             <Input type="date" value={endStr} onChange={(e) => setRange((prev) => ({ ...prev, end: new Date(e.target.value) }))} className="w-40" />
-            <Button onClick={() => setGeneratedRange({ startDate: startStr, endDate: endStr })}>Generuj listę</Button>
+            <Button onClick={() => {
+              setGeneratedStatuses({});
+              setGeneratedRange({ startDate: startStr, endDate: endStr });
+            }}>
+              Generuj listę
+            </Button>
           </div>
         </div>
 
@@ -166,13 +210,84 @@ export default function ShoppingList() {
           ) : generatedCount === 0 ? (
             <p className="text-sm text-muted-foreground">Brak produktów dla wybranego zakresu.</p>
           ) : (
-            <div className="space-y-2 max-h-64 overflow-auto pr-1">
-              {generatedPreview.map((item: any) => (
-                <div key={item.ingredientId} className="flex justify-between text-sm border-b pb-1">
-                  <span>{item.name}</span>
-                  <span className="text-muted-foreground">{formatAmount(item.totalAmount)} {item.unit}</span>
+            <div className="border rounded-xl overflow-hidden">
+              {generatedToBuyCategories.map((category) => (
+                <div key={`cat-${category}`}>
+                  <div className="px-4 py-1.5 bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-y">
+                    {category}
+                  </div>
+                  {generatedGroupedToBuy[category]
+                    .sort((a: any, b: any) => a.name.localeCompare(b.name, "pl"))
+                    .map((item: any) => (
+                      <div
+                        key={`to-buy-${item.ingredientId}`}
+                        onClick={() => toggleGeneratedBought(item.ingredientId)}
+                        className="py-2 px-3 flex items-center justify-between hover:bg-muted/30 cursor-pointer transition-colors group border-b"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-4 h-4 rounded-full border border-muted-foreground/30 group-hover:border-primary" />
+                          <span className="text-sm font-medium truncate">{item.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                            {formatAmount(item.totalAmount)} {item.unit}
+                          </span>
+                          <Button
+                            variant="outline"
+                            className="h-6 px-1.5 text-[9px]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleGeneratedAtHome(item.ingredientId);
+                            }}
+                          >
+                            Mam w domu
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                 </div>
               ))}
+
+              {generatedAtHome.length > 0 && (
+                <div>
+                  <div className="px-4 py-1.5 bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-y">W domu</div>
+                  {generatedAtHome
+                    .sort((a: any, b: any) => a.name.localeCompare(b.name, "pl"))
+                    .map((item: any) => (
+                      <div key={`at-home-${item.ingredientId}`} className="py-2 px-3 flex items-center justify-between border-b bg-muted/10">
+                        <span className="text-sm text-muted-foreground">{item.name}</span>
+                        <Button variant="outline" className="h-6 px-1.5 text-[9px]" onClick={() => toggleGeneratedAtHome(item.ingredientId)}>
+                          {statusLabel(item.status)}
+                        </Button>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {generatedBought.length > 0 && (
+                <div>
+                  <div className="px-4 py-1.5 bg-muted/40 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-y">Kupione</div>
+                  {generatedBought
+                    .sort((a: any, b: any) => a.name.localeCompare(b.name, "pl"))
+                    .map((item: any) => (
+                      <div
+                        key={`bought-${item.ingredientId}`}
+                        onClick={() => toggleGeneratedBought(item.ingredientId)}
+                        className="py-2 px-3 flex items-center justify-between cursor-pointer hover:bg-muted/20 transition-colors border-b bg-muted/10"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-4 h-4 rounded-full border bg-primary border-primary flex items-center justify-center">
+                            <Check className="w-3 h-3 text-white" />
+                          </div>
+                          <span className="text-sm text-muted-foreground line-through truncate">{item.name}</span>
+                        </div>
+                        <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                          {formatAmount(item.totalAmount)} {item.unit}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -238,7 +353,7 @@ export default function ShoppingList() {
                     <Button
                       variant="outline"
                       className="h-8 text-xs"
-                      onClick={() => updateItemMutation.mutate({ id: item.id, data: { status: nextStatus(item.status as ItemStatus) } })}
+                      onClick={() => updateItemMutation.mutate({ id: item.id, data: { status: item.status === "NOT_BOUGHT" ? "AT_HOME" : item.status === "AT_HOME" ? "BOUGHT" : "NOT_BOUGHT" } })}
                       disabled={selectedSnapshot.status === "COMPLETED"}
                     >
                       {statusLabel(item.status as ItemStatus)}
