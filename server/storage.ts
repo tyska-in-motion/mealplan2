@@ -79,6 +79,7 @@ export interface IStorage {
   getActiveShoppingListSnapshots(): Promise<any[]>;
   getShoppingListSnapshotById(snapshotId: number): Promise<any | undefined>;
   completeShoppingListSnapshot(snapshotId: number): Promise<any | undefined>;
+  deleteShoppingListSnapshot(snapshotId: number): Promise<void>;
   updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; name?: string; totalAmount?: number; unit?: string; category?: string }): Promise<any>;
   addShoppingListSnapshotItem(snapshotId: number, input: { name: string; totalAmount: number; unit: string; category?: string; status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number }): Promise<any>;
   deleteShoppingListSnapshotItem(snapshotItemId: number): Promise<void>;
@@ -928,7 +929,23 @@ export class DatabaseStorage implements IStorage {
     if (!snapshot) return undefined;
 
     const items = await db.select().from(shoppingListSnapshotItems).where(eq(shoppingListSnapshotItems.snapshotId, snapshotId));
-    return { ...snapshot, items };
+    const ingredientIds = Array.from(new Set(
+      items
+        .map((item) => Number(item.ingredientId))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    ));
+
+    const ingredientWeights = ingredientIds.length > 0
+      ? await db.select({ id: ingredients.id, unitWeight: ingredients.unitWeight }).from(ingredients).where(inArray(ingredients.id, ingredientIds))
+      : [];
+
+    const weightMap = new Map<number, number | null>(ingredientWeights.map((row) => [row.id, row.unitWeight]));
+    const enrichedItems = items.map((item) => ({
+      ...item,
+      unitWeight: Number(item.ingredientId) > 0 ? (weightMap.get(Number(item.ingredientId)) ?? null) : null,
+    }));
+
+    return { ...snapshot, items: enrichedItems };
   }
 
 
@@ -940,6 +957,10 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return updated;
+  }
+
+  async deleteShoppingListSnapshot(snapshotId: number): Promise<void> {
+    await db.delete(shoppingListSnapshots).where(eq(shoppingListSnapshots.id, snapshotId));
   }
 
   async updateShoppingListSnapshotItem(snapshotItemId: number, input: { status?: "BOUGHT" | "AT_HOME" | "NOT_BOUGHT"; price?: number; name?: string; totalAmount?: number; unit?: string; category?: string }): Promise<any> {

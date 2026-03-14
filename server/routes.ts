@@ -838,6 +838,16 @@ export async function registerRoutes(
     res.json(snapshot);
   });
 
+
+  app.delete("/api/shopping-lists/snapshots/:id", async (req, res) => {
+    const snapshotId = Number(req.params.id);
+    if (!Number.isFinite(snapshotId) || snapshotId <= 0) {
+      return res.status(400).json({ message: "Niepoprawny identyfikator listy" });
+    }
+
+    await storage.deleteShoppingListSnapshot(snapshotId);
+    res.status(204).end();
+  });
   app.post("/api/shopping-lists/snapshots/:id/complete", async (req, res) => {
     const snapshotId = Number(req.params.id);
     if (!Number.isFinite(snapshotId) || snapshotId <= 0) {
