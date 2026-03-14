@@ -224,7 +224,7 @@ export default function Recipes() {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [selectedMealType, setSelectedMealType] = useState("lunch");
   const [selectedPerson, setSelectedPerson] = useState<"A" | "B">("A");
-  const [addForBothPeople, setAddForBothPeople] = useState(true);
+  const [addForBothPeople, setAddForBothPeople] = useState(false);
   const [selectedFrequentAddons, setSelectedFrequentAddons] = useState<Record<"A" | "B", Record<string, number>>>({ A: {}, B: {} });
   const [selectedRecipeServings, setSelectedRecipeServings] = useState(1);
   const [selectedSuggestedRecipes, setSelectedSuggestedRecipes] = useState<Record<string, number>>({});
@@ -321,7 +321,8 @@ export default function Recipes() {
         if (selectedAddons.length > 0) {
           const baseIngredients = (recipeToPlan.ingredients || []).map((ri: any) => ({
             ingredientId: ri.ingredientId,
-            amount: Number(ri.amount) || 0,
+            amount: Number(ri.baseAmount ?? ri.amount) || 0,
+            scalingType: ri.scalingType || "LINEAR",
           }));
 
           const mergedIngredients = [
@@ -329,6 +330,7 @@ export default function Recipes() {
             ...selectedAddons.map((addon: any) => ({
               ingredientId: addon.ingredientId,
               amount: Number(addon.amount) || 0,
+              scalingType: "FIXED",
             })),
           ];
 
@@ -363,7 +365,7 @@ export default function Recipes() {
       setIsAddToPlanOpen(false);
       setRecipeToPlan(null);
       setSelectedFrequentAddons({ A: {}, B: {} });
-      setAddForBothPeople(true);
+      setAddForBothPeople(false);
       setSelectedRecipeServings(1);
       setSelectedSuggestedRecipes({});
       toast({ title: "Sukces", description: addForBothPeople ? "Przepis dodany do planu dla Tysi i Matiego." : `Przepis dodany do planu dla ${personName[selectedPerson]}.` });
@@ -1565,7 +1567,7 @@ export default function Recipes() {
           setRecipeToPlan(recipe);
           setViewingRecipe(null);
           setSelectedFrequentAddons({ A: {}, B: {} });
-          setAddForBothPeople(true);
+          setAddForBothPeople(false);
           setSelectedPerson("A");
           setSelectedRecipeServings(Number(servingsOverride) > 0 ? Number(servingsOverride) : 1);
           const initialSuggestions = ((recipe?.suggestedRecipes || []) as any[]).reduce((acc: Record<string, number>, item: any) => {
@@ -1593,7 +1595,7 @@ export default function Recipes() {
           setIsAddToPlanOpen(open);
           if (!open) {
             setSelectedFrequentAddons({ A: {}, B: {} });
-            setAddForBothPeople(true);
+            setAddForBothPeople(false);
             setSelectedPerson("A");
             setSelectedRecipeServings(1);
             setSelectedSuggestedRecipes({});
