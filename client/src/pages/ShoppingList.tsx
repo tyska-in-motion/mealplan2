@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { pl } from "date-fns/locale";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check } from "lucide-react";
+import { Check, Trash2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { useShoppingList } from "@/hooks/use-meal-plan";
 import { Button } from "@/components/ui/button";
@@ -13,12 +13,6 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 type ItemStatus = "NOT_BOUGHT" | "AT_HOME" | "BOUGHT";
-
-const statusLabel = (status: ItemStatus) => {
-  if (status === "AT_HOME") return "Mam w domu";
-  if (status === "BOUGHT") return "Kupione";
-  return "Do kupienia";
-};
 
 const formatAmount = (value: number) => {
   const rounded = Math.round(Number(value || 0) * 10) / 10;
@@ -31,6 +25,14 @@ const groupByCategory = (items: any[]) => items.reduce((acc: Record<string, any[
   acc[category].push(item);
   return acc;
 }, {});
+
+const formatPieces = (totalAmount: number, unitWeight?: number | null) => {
+  const grams = Number(totalAmount || 0);
+  const weight = Number(unitWeight || 0);
+  if (!Number.isFinite(grams) || grams <= 0 || !Number.isFinite(weight) || weight <= 0) return null;
+  const pieces = Math.ceil(grams / weight);
+  return `${pieces} szt`;
+};
 
 export default function ShoppingList() {
   const [range, setRange] = useState({
@@ -101,16 +103,18 @@ export default function ShoppingList() {
         name: snapshotName.trim() || fallbackName,
         periodStart: generatedRange.startDate,
         periodEnd: generatedRange.endDate,
-        items: (generatedItems as any[]).map((item: any) => ({
-          ingredientId: item.ingredientId,
-          name: item.name,
-          totalAmount: Number(item.totalAmount || 0),
-          unit: item.unit || "g",
-          category: item.category || "Inne",
-          status: generatedStatuses[item.ingredientId] || "NOT_BOUGHT",
-          price: 0,
-          isExtra: false,
-        })),
+        items: (generatedItems as any[])
+          .filter((item: any) => (generatedStatuses[item.ingredientId] || "NOT_BOUGHT") !== "AT_HOME")
+          .map((item: any) => ({
+            ingredientId: item.ingredientId,
+            name: item.name,
+            totalAmount: Number(item.totalAmount || 0),
+            unit: item.unit || "g",
+            category: item.category || "Inne",
+            status: (generatedStatuses[item.ingredientId] || "NOT_BOUGHT") === "BOUGHT" ? "BOUGHT" : "NOT_BOUGHT",
+            price: 0,
+            isExtra: false,
+          })),
       };
       const response = await apiRequest("POST", "/api/shopping-lists/snapshots", payload);
       return response.json();
@@ -119,7 +123,7 @@ export default function ShoppingList() {
       setSnapshotName("");
       setSelectedSnapshotId(snapshot.id);
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/active"] });
-      toast({ title: "Lista zapisana", description: "Lista czeka na realizację zakupów." });
+      toast({ title: "Lista zapisana", description: "Na zapisanej liście są tylko produkty do kupienia." });
     },
   });
 
@@ -141,8 +145,22 @@ export default function ShoppingList() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots", selectedSnapshotId] });
       setSelectedSnapshotId(null);
       toast({ title: "Zakupy zakończone", description: "Lista została przeniesiona do historii." });
+    },
+  });
+
+  const deleteListMutation = useMutation({
+    mutationFn: async (snapshotId: number) => {
+      await apiRequest("DELETE", `/api/shopping-lists/snapshots/${snapshotId}`);
+    },
+    onSuccess: (_, snapshotId) => {
+      if (selectedSnapshotId === snapshotId) setSelectedSnapshotId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shopping-lists/snapshots", snapshotId] });
+      toast({ title: "Usunięto", description: "Lista została usunięta." });
     },
   });
 
@@ -161,6 +179,7 @@ export default function ShoppingList() {
   const generatedToBuyCategories = Object.keys(generatedGroupedToBuy).sort();
 
   const generatedCount = generatedWithStatus.length;
+  const generatedSavedCount = generatedWithStatus.filter((item) => item.status !== "AT_HOME").length;
 
   const toggleGeneratedBought = (ingredientId: number) => {
     setGeneratedStatuses((prev) => {
@@ -177,6 +196,12 @@ export default function ShoppingList() {
       return { ...prev, [ingredientId]: next };
     });
   };
+
+  const selectedItems = selectedSnapshot?.items || [];
+  const selectedToBuy = selectedItems.filter((item: any) => item.status !== "BOUGHT" && item.status !== "AT_HOME");
+  const selectedBought = selectedItems.filter((item: any) => item.status === "BOUGHT");
+  const selectedGroupedToBuy = groupByCategory(selectedToBuy);
+  const selectedToBuyCategories = Object.keys(selectedGroupedToBuy).sort();
 
   return (
     <Layout>
@@ -201,7 +226,7 @@ export default function ShoppingList() {
         <div className="bg-white rounded-2xl border p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Podgląd wygenerowanej listy</h2>
-            <span className="text-xs text-muted-foreground">{generatedCount} pozycji</span>
+            <span className="text-xs text-muted-foreground">{generatedCount} pozycji • do zapisu: {generatedSavedCount}</span>
           </div>
           {!generatedRange ? (
             <p className="text-sm text-muted-foreground">Wybierz zakres dat i kliknij „Generuj listę”.</p>
@@ -250,14 +275,14 @@ export default function ShoppingList() {
 
               {generatedAtHome.length > 0 && (
                 <div>
-                  <div className="px-4 py-1.5 bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-y">W domu</div>
+                  <div className="px-4 py-1.5 bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-y">W domu (nie trafi do zapisanej listy)</div>
                   {generatedAtHome
                     .sort((a: any, b: any) => a.name.localeCompare(b.name, "pl"))
                     .map((item: any) => (
                       <div key={`at-home-${item.ingredientId}`} className="py-2 px-3 flex items-center justify-between border-b bg-muted/10">
                         <span className="text-sm text-muted-foreground">{item.name}</span>
                         <Button variant="outline" className="h-6 px-1.5 text-[9px]" onClick={() => toggleGeneratedAtHome(item.ingredientId)}>
-                          {statusLabel(item.status)}
+                          Przywróć
                         </Button>
                       </div>
                     ))}
@@ -299,7 +324,7 @@ export default function ShoppingList() {
             />
             <Button
               onClick={() => saveListMutation.mutate()}
-              disabled={!generatedRange || generatedCount === 0 || saveListMutation.isPending}
+              disabled={!generatedRange || generatedSavedCount === 0 || saveListMutation.isPending}
             >
               Zapisz listę
             </Button>
@@ -312,18 +337,22 @@ export default function ShoppingList() {
             <p className="text-sm text-muted-foreground">Brak aktywnych list.</p>
           ) : (
             activeLists.map((list: any) => (
-              <button
-                key={list.id}
-                type="button"
-                onClick={() => setSelectedSnapshotId(list.id)}
-                className={cn(
-                  "w-full text-left p-3 rounded-xl border",
-                  selectedSnapshotId === list.id ? "border-primary bg-primary/5" : "border-border",
-                )}
-              >
-                <p className="font-medium">{list.name}</p>
-                <p className="text-xs text-muted-foreground">{list.periodStart} - {list.periodEnd}</p>
-              </button>
+              <div key={list.id} className="flex items-start gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSnapshotId(list.id)}
+                  className={cn(
+                    "w-full text-left p-3 rounded-xl border",
+                    selectedSnapshotId === list.id ? "border-primary bg-primary/5" : "border-border",
+                  )}
+                >
+                  <p className="font-medium">{list.name}</p>
+                  <p className="text-xs text-muted-foreground">{list.periodStart} - {list.periodEnd}</p>
+                </button>
+                <Button variant="outline" size="icon" onClick={() => deleteListMutation.mutate(list.id)} disabled={deleteListMutation.isPending}>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
             ))
           )}
         </div>
@@ -333,48 +362,112 @@ export default function ShoppingList() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold">{selectedSnapshot.name}</h3>
-                <p className="text-xs text-muted-foreground">Klikaj status: Do kupienia → Mam w domu → Kupione.</p>
+                <p className="text-xs text-muted-foreground">Lista zakupów: checkbox = kupione, pozycja trafi na dół.</p>
               </div>
-              {selectedSnapshot.status !== "COMPLETED" && (
-                <Button onClick={() => completeListMutation.mutate(selectedSnapshot.id)}>
-                  Zakończ zakupy
+              <div className="flex items-center gap-2">
+                {selectedSnapshot.status !== "COMPLETED" && (
+                  <Button onClick={() => completeListMutation.mutate(selectedSnapshot.id)}>
+                    Zakończ zakupy
+                  </Button>
+                )}
+                <Button variant="outline" size="icon" onClick={() => deleteListMutation.mutate(selectedSnapshot.id)} disabled={deleteListMutation.isPending}>
+                  <Trash2 className="w-4 h-4" />
                 </Button>
-              )}
+              </div>
             </div>
 
-            <div className="divide-y">
-              {(selectedSnapshot.items || []).map((item: any) => (
-                <div key={item.id} className="py-2 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">{formatAmount(item.totalAmount)} {item.unit}</p>
+            <div className="border rounded-xl overflow-hidden">
+              {selectedToBuyCategories.map((category) => (
+                <div key={`selected-${category}`}>
+                  <div className="px-4 py-1.5 bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-y">
+                    {category}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      className="h-8 text-xs"
-                      onClick={() => updateItemMutation.mutate({ id: item.id, data: { status: item.status === "NOT_BOUGHT" ? "AT_HOME" : item.status === "AT_HOME" ? "BOUGHT" : "NOT_BOUGHT" } })}
-                      disabled={selectedSnapshot.status === "COMPLETED"}
-                    >
-                      {statusLabel(item.status as ItemStatus)}
-                    </Button>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="h-8 w-24"
-                      defaultValue={Number(item.price || 0)}
-                      disabled={selectedSnapshot.status === "COMPLETED"}
-                      onBlur={(e) => {
-                        const price = Number(e.target.value);
-                        if (Number.isFinite(price) && price >= 0) {
-                          updateItemMutation.mutate({ id: item.id, data: { price } });
-                        }
-                      }}
-                    />
-                  </div>
+                  {selectedGroupedToBuy[category]
+                    .sort((a: any, b: any) => a.name.localeCompare(b.name, "pl"))
+                    .map((item: any) => {
+                      const pieces = formatPieces(item.totalAmount, item.unitWeight);
+                      return (
+                        <div key={item.id} className="py-2 px-3 flex items-center justify-between gap-3 border-b hover:bg-muted/20">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <button
+                              type="button"
+                              className="w-4 h-4 rounded border border-muted-foreground/50"
+                              onClick={() => updateItemMutation.mutate({ id: item.id, data: { status: "BOUGHT" } })}
+                              disabled={selectedSnapshot.status === "COMPLETED"}
+                            />
+                            <div>
+                              <p className="text-sm font-medium truncate">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatAmount(item.totalAmount)} {item.unit}
+                                {pieces ? ` • ${pieces}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="h-8 w-24"
+                            defaultValue={Number(item.price || 0)}
+                            disabled={selectedSnapshot.status === "COMPLETED"}
+                            onBlur={(e) => {
+                              const price = Number(e.target.value);
+                              if (Number.isFinite(price) && price >= 0) {
+                                updateItemMutation.mutate({ id: item.id, data: { price } });
+                              }
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
                 </div>
               ))}
+
+              {selectedBought.length > 0 && (
+                <div>
+                  <div className="px-4 py-1.5 bg-muted/40 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-y">Kupione</div>
+                  {selectedBought
+                    .sort((a: any, b: any) => a.name.localeCompare(b.name, "pl"))
+                    .map((item: any) => {
+                      const pieces = formatPieces(item.totalAmount, item.unitWeight);
+                      return (
+                        <div key={`done-${item.id}`} className="py-2 px-3 flex items-center justify-between gap-3 border-b bg-muted/10">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <button
+                              type="button"
+                              className="w-4 h-4 rounded border bg-primary border-primary flex items-center justify-center"
+                              onClick={() => updateItemMutation.mutate({ id: item.id, data: { status: "NOT_BOUGHT" } })}
+                              disabled={selectedSnapshot.status === "COMPLETED"}
+                            >
+                              <Check className="w-3 h-3 text-white" />
+                            </button>
+                            <div>
+                              <p className="text-sm text-muted-foreground line-through truncate">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatAmount(item.totalAmount)} {item.unit}
+                                {pieces ? ` • ${pieces}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="h-8 w-24"
+                            defaultValue={Number(item.price || 0)}
+                            disabled={selectedSnapshot.status === "COMPLETED"}
+                            onBlur={(e) => {
+                              const price = Number(e.target.value);
+                              if (Number.isFinite(price) && price >= 0) {
+                                updateItemMutation.mutate({ id: item.id, data: { price } });
+                              }
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -385,14 +478,19 @@ export default function ShoppingList() {
             <p className="text-sm text-muted-foreground">Brak zakończonych list.</p>
           ) : (
             historyLists.map((snapshot: any) => (
-              <div key={snapshot.id} className="p-3 rounded-xl border">
-                <p className="font-medium">{snapshot.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {snapshot.periodStart} - {snapshot.periodEnd} • Kupione: {snapshot.bought} • W domu: {snapshot.atHome} • Koszt: {formatAmount(snapshot.totalCost || 0)} zł
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Zakończono: {snapshot.completedAt ? format(new Date(snapshot.completedAt), "d MMM yyyy HH:mm", { locale: pl }) : "-"}
-                </p>
+              <div key={snapshot.id} className="p-3 rounded-xl border flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">{snapshot.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {snapshot.periodStart} - {snapshot.periodEnd} • Kupione: {snapshot.bought} • W domu: {snapshot.atHome} • Koszt: {formatAmount(snapshot.totalCost || 0)} zł
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Zakończono: {snapshot.completedAt ? format(new Date(snapshot.completedAt), "d MMM yyyy HH:mm", { locale: pl }) : "-"}
+                  </p>
+                </div>
+                <Button variant="outline" size="icon" onClick={() => deleteListMutation.mutate(snapshot.id)} disabled={deleteListMutation.isPending}>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </div>
             ))
           )}
