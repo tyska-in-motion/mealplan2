@@ -126,6 +126,7 @@ export function RecipeView({
   }, [recipe?.suggestedRecipes, recipe?.suggestedRecipeIds, allRecipes]);
 
   const currentStep = instructionSteps[currentStepIndex];
+  const recipeComment = (recipe?.comments || "").trim();
   const currentStepText = (currentStep?.segments || []).map((segment: any) => segment.text).join("") || "";
   const currentStepDurationMinutes = parseDurationFromStep(currentStepText);
 
@@ -533,6 +534,12 @@ export function RecipeView({
             </div>
             <div>
               <h3 className="text-lg font-bold mb-3">Instrukcje</h3>
+              {recipeComment && (
+                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                  <p className="text-xs font-semibold uppercase tracking-wide">Komentarz</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{recipeComment}</p>
+                </div>
+              )}
               {instructionSteps.length > 0 ? (
                 <ol className="list-decimal pl-5 space-y-1 text-muted-foreground leading-relaxed">
                   {instructionSteps.map((step: InstructionStep, idx: number) => (

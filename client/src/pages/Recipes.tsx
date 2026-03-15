@@ -39,6 +39,7 @@ const createRecipeSchema = z.object({
   tags: z.array(z.string()).optional().default([]),
   description: z.string().optional(),
   instructions: z.string().optional(),
+  comments: z.string().optional(),
   instructionSteps: z.array(z.any()).optional(),
   prepTime: z.coerce.number().min(0),
   servings: z.coerce.number().min(0.1).default(1),
@@ -390,6 +391,7 @@ export default function Recipes() {
       tags: [] as string[],
       description: "",
       instructions: "",
+      comments: "",
       prepTime: 15,
       servings: 1,
       imageUrl: "",
@@ -542,6 +544,7 @@ export default function Recipes() {
       tags: recipe.tags || [],
       description: recipe.description || "",
       instructions: recipe.instructions || "",
+      comments: recipe.comments || "",
       instructionSteps: recipe.instructionSteps || [],
       prepTime: recipe.prepTime,
       servings: recipe.servings || 1,
@@ -602,6 +605,7 @@ export default function Recipes() {
       tags: [],
       description: "",
       instructions: "",
+      comments: "",
       instructionSteps: [],
       prepTime: 15,
       servings: 1,
@@ -624,6 +628,7 @@ export default function Recipes() {
       tags: recipe.tags || [],
       description: recipe.description || "",
       instructions: recipe.instructions || "",
+      comments: recipe.comments || "",
       instructionSteps: recipe.instructionSteps || [],
       prepTime: recipe.prepTime || 0,
       imageUrl: recipe.imageUrl || "",
@@ -670,6 +675,7 @@ export default function Recipes() {
     const instructionSteps = buildInstructionSteps(data.instructions, instructionLinks);
     const normalizedData = {
       ...data,
+      comments: data.comments?.trim() || undefined,
       instructionSteps,
       suggestedRecipes: (data.suggestedRecipes || [])
         .map((item: any) => ({ recipeId: Number(item.recipeId), servings: 1 }))
@@ -1105,6 +1111,15 @@ export default function Recipes() {
                   placeholder={"1. Pokrój warzywa\n2. Smaż 8 minut [timer:8]\n3. Dopraw i podaj"}
                 />
                 <p className="text-xs text-muted-foreground mt-1">To samo pole zasila widok instrukcji i cooking mode. Opcjonalny timer dodasz jako [timer:liczba].</p>
+
+                <div className="mt-3">
+                  <label className="text-sm font-medium mb-1 block">Komentarz do przepisu</label>
+                  <textarea
+                    {...form.register("comments")}
+                    className="w-full min-h-[90px] p-3 rounded-xl border border-amber-200 bg-amber-50/70 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    placeholder="Np. następnym razem daj mniej soli albo piecz 2 minuty krócej"
+                  />
+                </div>
 
                 <div className="mt-3 rounded-xl border p-3 space-y-2 bg-secondary/20">
                   <p className="text-xs font-semibold">Mapowanie fragmentów na składniki (Cooking Mode)</p>
