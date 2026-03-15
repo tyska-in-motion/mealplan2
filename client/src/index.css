@@ -46,6 +46,8 @@
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-tap-highlight-color: transparent;
     text-size-adjust: 100%;
+    font-size: 15px;
+    line-height: 1.45;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-display font-bold tracking-tight;
@@ -82,7 +84,39 @@
 }
 
 @media (max-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+
   html, body {
     overscroll-behavior-y: none;
+  }
+
+  body {
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  h1 {
+    font-size: 1.35rem;
+  }
+
+  h2 {
+    font-size: 1.18rem;
+  }
+
+  h3 {
+    font-size: 1.05rem;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
