@@ -51,6 +51,9 @@ export async function ensureDbCompat() {
   // Backward compatibility for environments that already query per-person settings.
   await pool.query(`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS person text DEFAULT 'A'`);
 
+  // Backward-compatible self-healing for recipe comments field
+  await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS comments text`);
+
 
   // Backward-compatible self-healing for ingredient scaling migration
   await pool.query(`DO $$ BEGIN
