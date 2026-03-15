@@ -54,6 +54,7 @@ export const recipes = pgTable("recipes", {
   tags: text("tags").array(), // e.g. ["szybkie", "śniadanie"]
   description: text("description"),
   instructions: text("instructions"),
+  comments: text("comments"),
   instructionSteps: jsonb("instruction_steps").$type<InstructionStep[]>(),
   prepTime: integer("prep_time"), // minutes
   imageUrl: text("image_url"),
